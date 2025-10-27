@@ -56,3 +56,43 @@ export interface UserDetail {
 }
 
 export type { Session, User };
+
+// === New Types for Booking Workflow ===
+
+export interface PhoneData {
+  phone: string;
+}
+
+export interface DatesData {
+  pickupDate: string;
+  pickupTime: string;
+  returnDate: string;
+  returnTime: string;
+}
+
+export interface BookingExtra {
+  name: 'Driver' | 'GPS' | 'Child Seat' | 'Insurance';
+  pricePerDay: number;
+  selected: boolean;
+}
+
+export interface ExtrasData {
+  extras: BookingExtra[];
+  advancePaymentOptionSelected: boolean;
+}
+
+export interface PaymentData {
+  paymentMode: 'full' | 'hold';
+  // TODO: Add payment intent details, transaction ID, etc.
+}
+
+export interface BookingDraft {
+  carId: string;
+  currentStep: number;
+  phoneData?: PhoneData;
+  datesData?: DatesData;
+  termsAccepted?: boolean;
+  licenseUploaded?: boolean; // Or more detailed license info
+  extrasData?: ExtrasData;
+  paymentData?: PaymentData;
+}

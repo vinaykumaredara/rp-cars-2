@@ -29,16 +29,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUser(session?.user ?? null);
 
       if (session?.user) {
+        // Use RPC to securely fetch the role, bypassing RLS issues.
         const { data: roleData, error: roleError } = await supabase
-          .from('user_roles')
-          .select('role')
-          .eq('user_id', session.user.id)
-          .single();
+          .rpc('get_user_role', { p_user_id: session.user.id });
         
         if (roleError) {
-          console.error("Error fetching initial user role:", roleError.message);
+          console.error("Error fetching initial user role via RPC:", roleError.message);
         }
-        setRole(roleData?.role as Role ?? 'user'); // Default to 'user' if no role found
+        // roleData will be a string (the role) or null/undefined
+        setRole(roleData as Role ?? 'user'); // Default to 'user' if no role found
       } else {
         setRole(null);
       }
@@ -54,17 +53,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (session?.user) {
         // Fetch role on sign-in or session refresh
         setLoading(true);
+        // Use RPC to securely fetch the role, bypassing RLS issues.
         const { data: roleData, error: roleError } = await supabase
-          .from('user_roles')
-          .select('role')
-          .eq('user_id', session.user.id)
-          .single();
+          .rpc('get_user_role', { p_user_id: session.user.id });
 
         if (roleError) {
-          console.error("Error fetching user role on auth state change:", roleError.message);
+          console.error("Error fetching user role on auth state change via RPC:", roleError.message);
         }
         
-        const newRole = roleData?.role as Role ?? 'user';
+        const newRole = roleData as Role ?? 'user';
         setRole(newRole);
         
         // Redirect admin on sign-in using SPA-friendly navigation

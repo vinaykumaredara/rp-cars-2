@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { fetchUsersWithRoles, updateUserStatus, deleteUserFromTables } from '../lib/userService';
@@ -156,6 +155,27 @@ BEGIN
   RETURN stats;
 END;
 $$;
+
+-- 9. Create/replace the database function to securely fetch a single user's role for client-side authentication context
+CREATE OR REPLACE FUNCTION get_user_role(p_user_id uuid)
+RETURNS text
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  user_role text;
+BEGIN
+  SELECT role INTO user_role FROM public.user_roles WHERE user_id = p_user_id;
+  RETURN COALESCE(user_role, 'user'); -- Default to 'user' if no role found
+EXCEPTION
+  WHEN NO_DATA_FOUND THEN
+    RETURN 'user'; -- Explicitly handle no data found, return 'user'
+END;
+$$;
+
+-- Fix: Grant execution to authenticated users for the get_user_role(uuid) function
+-- It must specify the parameter type 'uuid'.
+GRANT EXECUTE ON FUNCTION public.get_user_role(uuid) TO authenticated;
 `;
   
   return (
@@ -294,8 +314,10 @@ const UserManagement: React.FC = () => {
     const isSetupError = error && (
       error.includes("Backend not configured") ||
       error.includes("Database schema mismatch") ||
-      error.includes("function is missing") || // Catches missing is_admin()
-      error.includes("permission denied for function is_admin") // Catches missing GRANT EXECUTE on is_admin()
+      error.includes("function is missing") || // Catches missing is_admin() or get_user_role()
+      error.includes("permission denied for function is_admin") || // Catches missing GRANT EXECUTE on is_admin()
+      error.includes("permission denied for function get_user_role") || // Catches missing GRANT EXECUTE on get_user_role()
+      error.includes("function public.get_user_role(uuid) does not exist") // Catches the specific error reported
     );
 
     if (isSetupError) {
@@ -392,4 +414,3 @@ const UserManagement: React.FC = () => {
 };
 
 export default UserManagement;
-    
