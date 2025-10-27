@@ -1,21 +1,59 @@
 
 import { supabase } from './supabaseClient';
-import type { Car } from '../types';
+import type { Car, FuelType } from '../types';
+
+interface FetchCarsOptions {
+  page?: number;
+  limit?: number;
+  searchTerm?: string;
+  seatFilter?: number | 'all';
+  fuelFilter?: FuelType | 'all';
+}
+
 
 /**
- * Fetches all cars from the database, formats the data, and constructs public URLs for images.
- * This centralized function ensures consistency and avoids code duplication.
- * @returns An object containing the list of cars or an error message.
+ * Fetches cars from the database, with optional pagination and filtering.
+ * @param options - Options for fetching, including pagination and filters.
+ * @returns An object containing the list of cars, an error message, and the total count.
  */
-export const fetchCarsFromDB = async (): Promise<{ cars: Car[]; error: string | null }> => {
-    const { data, error } = await supabase
+export const fetchCarsFromDB = async (options: FetchCarsOptions = {}): Promise<{ cars: Car[]; error: string | null; count: number | null }> => {
+    const { page, limit, searchTerm, seatFilter, fuelFilter } = options;
+
+    let query = supabase
         .from('cars')
-        .select('*')
-        .order('id', { ascending: true });
+        .select('*', { count: 'exact' })
+        // Only show cars that are published to users
+        .eq('status', 'published');
+    
+    if (searchTerm) {
+      query = query.or(`title.ilike.%${searchTerm}%,make.ilike.%${searchTerm}%,model.ilike.%${searchTerm}%`);
+    }
+
+    if (seatFilter && seatFilter !== 'all') {
+        query = query.eq('seats', seatFilter);
+    }
+
+    if (fuelFilter && fuelFilter !== 'all') {
+        query = query.eq('fuel_type', fuelFilter);
+    }
+
+
+    if (page && limit) {
+        const from = (page - 1) * limit;
+        const to = page * limit - 1;
+        query = query.range(from, to);
+    }
+    
+    // Order by most recent year, then alphabetically by title
+    const { data, error, count } = await query
+        .order('year', { ascending: false })
+        .order('title', { ascending: true });
 
     if (error) {
         console.error('Error fetching cars:', error);
-        return { cars: [], error: 'Could not fetch car data. Please try again later.' };
+        // FIX: Return the specific error message from Supabase instead of a generic one.
+        // This helps diagnose underlying issues like RLS policies and fixes the `[object Object]` error.
+        return { cars: [], error: `Failed to fetch car data: ${error.message}`, count: 0 };
     }
 
     if (data) {
@@ -25,12 +63,14 @@ export const fetchCarsFromDB = async (): Promise<{ cars: Car[]; error: string | 
                 .filter((path): path is string => typeof path === 'string' && path.trim() !== '');
             
             const imageUrls = imagePaths.map(path => {
-                const { data: { publicUrl } } = supabase
+                // FIX: Make image URL retrieval safer to prevent potential crashes if the
+                // publicUrl data structure is not what's expected.
+                const { data: urlData } = supabase
                     .storage
                     .from('cars-photos')
                     .getPublicUrl(path);
-                return publicUrl;
-            });
+                return urlData?.publicUrl || '';
+            }).filter(Boolean); // Filter out any empty URLs that might result from the safety check
 
             return {
                 id: car.id,
@@ -40,7 +80,7 @@ export const fetchCarsFromDB = async (): Promise<{ cars: Car[]; error: string | 
                 year: car.year,
                 seats: car.seats,
                 fuelType: car.fuel_type,
-                gearType: car.transmission || car.gear_type, // Support both column names
+                transmission: car.transmission,
                 pricePerDay: car.price_per_day,
                 images: imageUrls,
                 imagePaths: imagePaths, // Keep original paths for admin operations
@@ -50,8 +90,8 @@ export const fetchCarsFromDB = async (): Promise<{ cars: Car[]; error: string | 
                 booking_status: car.booking_status
             };
         });
-        return { cars: formattedData, error: null };
+        return { cars: formattedData, error: null, count };
     }
 
-    return { cars: [], error: 'No car data found.' };
+    return { cars: [], error: 'No car data found.', count: 0 };
 };

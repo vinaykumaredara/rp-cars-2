@@ -1,11 +1,10 @@
-
 import React from 'react';
 import { STATS_DATA } from '../constants';
 import type { Stat } from '../types';
 
 const StatCard: React.FC<{ stat: Stat }> = ({ stat }) => (
     <div className="text-center">
-        <p className="text-4xl lg:text-5xl font-bold text-primary-blue">{stat.value}</p>
+        <p className="text-4xl lg:text-5xl font-bold text-primary">{stat.value}</p>
         <p className="text-lg text-gray-600 mt-2">{stat.label}</p>
     </div>
 );

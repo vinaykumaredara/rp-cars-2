@@ -1,10 +1,10 @@
-
 import type { ComponentType } from 'react';
 import type { Session, User } from '@supabase/supabase-js';
 
 export type FuelType = 'Petrol' | 'Diesel' | 'Electric' | 'Hybrid';
 export type GearType = 'Manual' | 'Automatic';
 export type Role = 'admin' | 'user';
+export type UserStatus = 'active' | 'inactive';
 
 export interface Car {
   id: string; // Changed from number to string for UUID
@@ -14,7 +14,7 @@ export interface Car {
   year: number;
   seats: number;
   fuelType: FuelType;
-  gearType: GearType;
+  transmission: GearType;
   pricePerDay: number;
   images: string[]; // These are full public URLs for display
   imagePaths?: string[]; // Raw storage paths, used for admin delete operations
@@ -41,6 +41,18 @@ export interface Feature {
 export interface Stat {
     value: string;
     label: string;
+}
+
+// Added for the User Management feature
+export interface UserDetail {
+  id: string;
+  email: string | undefined;
+  role: Role;
+  created_at?: string;
+  // Add new fields for comprehensive user management
+  name: string | null;
+  phone: string | null;
+  status: UserStatus;
 }
 
 export type { Session, User };

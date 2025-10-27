@@ -1,16 +1,40 @@
-import React from 'react';
+
+import React, { useState, useEffect } from 'react';
 import AdminCard from './AdminCard';
 import { CarManagementIcon, BookingManagementIcon, LicenseVerificationIcon, PromoCodeIcon, UserManagementIcon } from '../constants';
+import { fetchDashboardStats } from '../lib/adminService';
+import type { DashboardStats } from '../lib/adminService';
 
 const AdminDashboard: React.FC = () => {
+    const [stats, setStats] = useState<DashboardStats | null>(null);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+
+    useEffect(() => {
+        const loadStats = async () => {
+            setLoading(true);
+            const { stats, error } = await fetchDashboardStats();
+            setStats(stats);
+            setError(error);
+            setLoading(false);
+        };
+        loadStats();
+    }, []);
+    
+    const renderStat = (value: number | undefined, unit: string, colorClass = 'text-green-600') => {
+        if (loading) return <span className="text-gray-500">Loading...</span>;
+        if (error) return <span className="text-red-500 font-semibold">Error loading stats</span>;
+        return <span><span className={colorClass + ' font-bold'}>{value ?? 0}</span> {unit}</span>;
+    };
+
     return (
-        <div className="bg-neutral-lightgrey min-h-screen p-4 sm:p-6 lg:p-8 font-sans">
+        <div className="bg-muted min-h-screen p-4 sm:p-6 lg:p-8 font-sans">
             <div className="max-w-7xl mx-auto">
                 {/* Header */}
                 <header className="mb-8">
                     <div className="flex items-center">
                         <div className="bg-purple-600 p-3 rounded-lg mr-4 shadow-md">
-                           <svg className="w-8 h-8 text-white" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 17h2l.64-2.56a2 2 0 0 0-1.94-2.44H5.3a2 2 0 0 0-1.94 2.44L4 17h2" /><path d="M19 17a2 2 0 1 1 0-4H5a2 2 0 1 1 0 4h14Z" /><path d="M5 13V6a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v7" /></svg>
+                           <CarManagementIcon className="w-8 h-8 text-white" />
                         </div>
                         <div>
                             <h1 className="text-3xl font-bold" style={{ color: '#6b21a8' }}>RP CARS Admin</h1>
@@ -18,6 +42,13 @@ const AdminDashboard: React.FC = () => {
                         </div>
                     </div>
                 </header>
+                
+                {error && (
+                    <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg relative mb-6" role="alert">
+                        <strong className="font-bold">Error: </strong>
+                        <span className="block sm:inline">{error}</span>
+                    </div>
+                )}
 
                 {/* Main Content Grid */}
                 <main className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -30,11 +61,7 @@ const AdminDashboard: React.FC = () => {
                         }
                         title="Car Management"
                         description="Add, edit, and manage your car inventory with photos and specifications."
-                        status={
-                            <span>
-                                1 active vehicles • <span className="text-green-600 font-semibold">Updated daily</span>
-                            </span>
-                        }
+                        status={renderStat(stats?.total_cars, 'total vehicles')}
                     />
                     <AdminCard
                         onClick={() => window.location.hash = '#/admin/bookings'}
@@ -45,11 +72,7 @@ const AdminDashboard: React.FC = () => {
                         }
                         title="Booking Management"
                         description="View and manage customer bookings and cancellations."
-                        status={
-                            <span>
-                                1 active bookings • <span className="text-orange-500 font-semibold">Real-time</span>
-                            </span>
-                        }
+                        status={renderStat(stats?.active_bookings, 'active bookings', 'text-orange-600')}
                     />
                     <AdminCard
                         onClick={() => window.location.hash = '#/admin/users'}
@@ -60,6 +83,7 @@ const AdminDashboard: React.FC = () => {
                         }
                         title="User Management"
                         description="View and manage registered users."
+                        status={renderStat(stats?.total_users, 'registered users', 'text-blue-600')}
                     />
                     <AdminCard
                         onClick={() => window.location.hash = '#/admin/licenses'}

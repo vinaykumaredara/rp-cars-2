@@ -1,4 +1,3 @@
-
 import React from 'react';
 import type { FuelType } from '../types';
 
@@ -26,7 +25,7 @@ const SearchFilter: React.FC<SearchFilterProps> = ({
               placeholder="e.g., Swift LXI, 2025"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-primary-blue focus:border-primary-blue transition duration-150 ease-in-out"
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-primary focus:border-primary transition duration-150 ease-in-out"
             />
           </div>
           <div>
@@ -35,7 +34,7 @@ const SearchFilter: React.FC<SearchFilterProps> = ({
               id="seats"
               value={seatFilter}
               onChange={(e) => setSeatFilter(e.target.value === 'all' ? 'all' : parseInt(e.target.value, 10))}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-primary-blue focus:border-primary-blue transition duration-150 ease-in-out bg-white"
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-primary focus:border-primary transition duration-150 ease-in-out bg-white"
             >
               <option value="all">All Seats</option>
               <option value="5">5 Seats</option>
@@ -48,7 +47,7 @@ const SearchFilter: React.FC<SearchFilterProps> = ({
               id="fuel"
               value={fuelFilter}
               onChange={(e) => setFuelFilter(e.target.value as FuelType | 'all')}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-primary-blue focus:border-primary-blue transition duration-150 ease-in-out bg-white"
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-primary focus:border-primary transition duration-150 ease-in-out bg-white"
             >
               <option value="all">All Fuel Types</option>
               <option value="Petrol">Petrol</option>

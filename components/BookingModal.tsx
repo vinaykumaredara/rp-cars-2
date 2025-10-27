@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, useMemo } from 'react';
 import type { Car } from '../types';
 import { useAuth } from '../contexts/AuthContext';
@@ -56,13 +57,16 @@ const BookingModal: React.FC<BookingModalProps> = ({ isOpen, onClose, car }) => 
     setError('');
     setBookingStatus('processing');
     
-    // 1. Check for booking conflicts before attempting to insert
-    const { data: existingBookings, error: conflictError } = await supabase
+    // 1. Check for booking conflicts before attempting to insert.
+    // The previous implementation used an invalid .or() filter for OVERLAPS.
+    // This is the corrected logic: an overlap exists if (existing.start < new.end) AND (new.start < existing.end).
+    const { count, error: conflictError } = await supabase
       .from('bookings')
-      .select('id')
+      .select('*', { count: 'exact', head: true }) // Efficiently get count without fetching data
       .eq('car_id', car.id)
-      .eq('status', 'confirmed') // Only check against confirmed bookings
-      .or(`(start_datetime,end_datetime) OVERLAPS ('${new Date(startDate).toISOString()}','${new Date(endDate).toISOString()}')`);
+      .eq('status', 'confirmed')
+      .lt('start_datetime', new Date(endDate).toISOString())
+      .gt('end_datetime', new Date(startDate).toISOString());
 
     if (conflictError) {
       setError('Could not verify car availability. Please try again.');
@@ -71,7 +75,7 @@ const BookingModal: React.FC<BookingModalProps> = ({ isOpen, onClose, car }) => 
       return;
     }
 
-    if (existingBookings && existingBookings.length > 0) {
+    if (count && count > 0) {
       setError('Sorry, this car is already booked for the selected dates. Please choose different dates.');
       setBookingStatus('error');
       return;
@@ -123,7 +127,7 @@ const BookingModal: React.FC<BookingModalProps> = ({ isOpen, onClose, car }) => 
         style={{ animation: 'fadeInScale 0.3s forwards' }}
       >
         <div className="flex justify-between items-center mb-6">
-          <h2 className="text-2xl font-bold text-neutral-charcoal">Book Your Ride</h2>
+          <h2 className="text-2xl font-bold text-foreground">Book Your Ride</h2>
           <button onClick={closeModal} className="text-gray-400 hover:text-gray-600">
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
           </button>
@@ -132,7 +136,7 @@ const BookingModal: React.FC<BookingModalProps> = ({ isOpen, onClose, car }) => 
         {bookingStatus === 'success' ? (
             <div className="text-center py-8">
                 <svg className="w-16 h-16 mx-auto text-green-500 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                <h3 className="text-xl font-bold text-neutral-charcoal">Booking Confirmed!</h3>
+                <h3 className="text-xl font-bold text-foreground">Booking Confirmed!</h3>
                 <p className="text-gray-600 mt-2">You will receive a confirmation email shortly. Enjoy your trip!</p>
                 <button onClick={closeModal} className="mt-6 w-full py-3 rounded-lg bg-primary text-white font-semibold hover:bg-primary-hover transition">
                     Done
@@ -143,8 +147,8 @@ const BookingModal: React.FC<BookingModalProps> = ({ isOpen, onClose, car }) => 
                 <div className="flex items-center space-x-4 mb-6">
                     <img src={carImage} alt={car.title} className="w-32 h-20 object-cover rounded-md" />
                     <div>
-                        <h3 className="text-lg font-bold text-neutral-charcoal">{car.title}</h3>
-                        <p className="text-gray-500">{car.year} &bull; {car.fuelType} &bull; {car.gearType}</p>
+                        <h3 className="text-lg font-bold text-foreground">{car.title}</h3>
+                        <p className="text-gray-500">{car.year} &bull; {car.fuelType} &bull; {car.transmission}</p>
                     </div>
                 </div>
 
@@ -164,7 +168,7 @@ const BookingModal: React.FC<BookingModalProps> = ({ isOpen, onClose, car }) => 
                     
                     <div className="bg-blue-50 p-4 rounded-lg mb-6">
                         <div className="flex justify-between items-center text-lg">
-                            <span className="font-semibold text-neutral-charcoal">Total Price</span>
+                            <span className="font-semibold text-foreground">Total Price</span>
                             <span className="font-bold text-primary">
                                 {totalPrice > 0 ? `₹${totalPrice.toLocaleString()}` : 'Select dates'}
                             </span>
@@ -172,7 +176,7 @@ const BookingModal: React.FC<BookingModalProps> = ({ isOpen, onClose, car }) => 
                         {numberOfDays > 0 && <p className="text-sm text-gray-600 text-right mt-1">For {numberOfDays} day{numberOfDays > 1 && 's'}</p>}
                     </div>
                     
-                    <button type="submit" disabled={bookingStatus === 'processing'} className="w-full py-3 rounded-lg bg-primary text-white font-semibold hover:bg-primary-hover transition disabled:bg-opacity-50">
+                    <button type="submit" disabled={bookingStatus === 'processing' || numberOfDays <= 0} className="w-full py-3 rounded-lg bg-primary text-white font-semibold hover:bg-primary-hover transition disabled:bg-opacity-50 disabled:cursor-not-allowed">
                         {bookingStatus === 'processing' ? 'Confirming...' : 'Confirm Booking'}
                     </button>
                 </form>

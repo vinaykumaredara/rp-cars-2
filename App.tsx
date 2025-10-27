@@ -1,4 +1,5 @@
 
+
 import React, { useState, useMemo, useEffect } from 'react';
 import Header from './components/Header';
 import Hero from './components/Hero';
@@ -20,6 +21,9 @@ import PromoCodeManagement from './components/PromoCodeManagement';
 import { fetchCarsFromDB } from './lib/carService'; // Import the new service
 import type { Car, FuelType } from './types';
 import { useAuth } from './contexts/AuthContext';
+import AIAssistant from './components/AIAssistant';
+
+const CARS_PER_PAGE = 9;
 
 // Helper to determine the current view from the hash
 const getCurrentView = () => {
@@ -36,10 +40,14 @@ const getCurrentView = () => {
 };
 
 const App: React.FC = () => {
-    // State for cars
+    // State for cars & pagination
     const [cars, setCars] = useState<Car[]>([]);
+    const [currentPage, setCurrentPage] = useState(1);
+    const [hasMoreCars, setHasMoreCars] = useState(true);
     const [isLoadingCars, setIsLoadingCars] = useState(true);
+    const [isFetchingMore, setIsFetchingMore] = useState(false);
     const [carsError, setCarsError] = useState<string | null>(null);
+    const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
 
     // State for auth modal
     const [isSignInModalOpen, setIsSignInModalOpen] = useState(false);
@@ -59,16 +67,32 @@ const App: React.FC = () => {
     const { user, role, loading: authLoading } = useAuth();
     const isAdmin = role === 'admin';
 
-    // Fetch car data using the centralized service
+    // Fetch car data when filters change
     useEffect(() => {
-        const loadCars = async () => {
-            const { cars, error } = await fetchCarsFromDB();
-            setCars(cars);
+        const loadFilteredCars = async () => {
+            setIsLoadingCars(true);
+            setCarsError(null);
+            
+            const { cars: newCars, error, count } = await fetchCarsFromDB({ 
+                page: 1, 
+                limit: CARS_PER_PAGE,
+                searchTerm,
+                seatFilter,
+                fuelFilter,
+            });
+            
+            setCars(newCars);
+            setCurrentPage(1); // Reset to page 1 for new filter results
             setCarsError(error);
+            if (count !== null) {
+                setHasMoreCars(newCars.length < count);
+            } else {
+                setHasMoreCars(false);
+            }
             setIsLoadingCars(false);
         };
-        loadCars();
-    }, []);
+        loadFilteredCars();
+    }, [searchTerm, seatFilter, fuelFilter]);
 
     // Handle hash-based routing and access control
     useEffect(() => {
@@ -96,16 +120,38 @@ const App: React.FC = () => {
             setIsBookingModalOpen(true);
         }
     };
-    
-    const filteredCars = useMemo(() => {
-        return cars.filter(car => {
-            const searchTermLower = searchTerm.toLowerCase();
-            const matchesSearch = car.title.toLowerCase().includes(searchTermLower) || car.year.toString().includes(searchTermLower);
-            const matchesSeats = seatFilter === 'all' || car.seats === seatFilter;
-            const matchesFuel = fuelFilter === 'all' || car.fuelType === fuelFilter;
-            return matchesSearch && matchesSeats && matchesFuel;
+
+    const handleLoadMore = async () => {
+        if (isFetchingMore || !hasMoreCars) return;
+
+        setIsFetchingMore(true);
+        setLoadMoreError(null);
+        const nextPage = currentPage + 1;
+        const { cars: newCars, error, count } = await fetchCarsFromDB({ 
+            page: nextPage, 
+            limit: CARS_PER_PAGE,
+            searchTerm,
+            seatFilter,
+            fuelFilter,
         });
-    }, [cars, searchTerm, seatFilter, fuelFilter]);
+
+        if (error) {
+            setLoadMoreError('Failed to load more cars. Please try again.');
+            console.error("Failed to load more cars:", error);
+        } else if (newCars.length > 0) {
+            setCars(prevCars => {
+                const updatedCars = [...prevCars, ...newCars];
+                if (count !== null) {
+                    setHasMoreCars(updatedCars.length < count);
+                }
+                return updatedCars;
+            });
+            setCurrentPage(nextPage);
+        } else {
+            setHasMoreCars(false);
+        }
+        setIsFetchingMore(false);
+    };
     
     // Render Admin section or Home section based on view and auth
     if (view.startsWith('admin') && isAdmin) {
@@ -144,7 +190,7 @@ const App: React.FC = () => {
                 />
                 <section id="cars" className="py-16 lg:py-24">
                   <div className="container mx-auto px-4">
-                    <h2 className="text-3xl font-bold text-center mb-12 text-neutral-charcoal">Our Fleet</h2>
+                    <h2 className="text-3xl font-bold text-center mb-12 text-foreground">Our Fleet</h2>
                     {isLoadingCars ? (
                         <p className="text-center text-gray-600">Loading our fleet...</p>
                     ) : carsError ? (
@@ -152,12 +198,30 @@ const App: React.FC = () => {
                     ) : (
                         <>
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                              {filteredCars.map(car => (
+                              {cars.map(car => (
                                 <CarCard key={car.id} car={car} onBookNow={handleBookNow} />
                               ))}
                             </div>
-                            {filteredCars.length === 0 && (
-                                <p className="text-center text-gray-600 mt-8">No cars match your current filters. Try adjusting your search.</p>
+
+                            {cars.length === 0 && (
+                                <p className="text-center text-gray-600 mt-8">
+                                    No cars match your current filters. Try adjusting your search.
+                                </p>
+                            )}
+
+                            {hasMoreCars && (
+                                <div className="text-center mt-12">
+                                    <button
+                                        onClick={handleLoadMore}
+                                        disabled={isFetchingMore}
+                                        className="px-8 py-3 rounded-lg bg-primary text-white font-semibold hover:bg-primary-hover transition-all duration-300 shadow-md hover:shadow-lg transform hover:-translate-y-0.5 disabled:bg-opacity-50 disabled:cursor-wait disabled:transform-none"
+                                    >
+                                        {isFetchingMore ? 'Loading...' : 'Load More Cars'}
+                                    </button>
+                                    {loadMoreError && (
+                                        <p className="text-red-600 text-sm mt-2">{loadMoreError}</p>
+                                    )}
+                                </div>
                             )}
                         </>
                     )}
@@ -178,6 +242,7 @@ const App: React.FC = () => {
                     car={selectedCar}
                 />
             )}
+            <AIAssistant />
         </div>
     );
 };

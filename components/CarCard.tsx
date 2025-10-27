@@ -1,3 +1,5 @@
+
+
 import React, { useState } from 'react';
 import type { Car } from '../types';
 import { SeatIcon, FuelIcon, GearIcon, MapPinIcon } from '../constants';
@@ -39,10 +41,10 @@ const CarCard: React.FC<CarCardProps> = ({ car, onBookNow }) => {
         
         {hasImages && car.images.length > 1 && (
           <>
-            <button onClick={prevImage} className="absolute left-2 top-1/2 -translate-y-1/2 bg-black bg-opacity-50 text-white p-2 rounded-full hover:bg-opacity-75 transition-opacity">
+            <button type="button" aria-label="Previous image" onClick={prevImage} className="absolute left-2 top-1/2 -translate-y-1/2 bg-black bg-opacity-50 text-white p-2 rounded-full hover:bg-opacity-75 transition-opacity">
               &#10094;
             </button>
-            <button onClick={nextImage} className="absolute right-2 top-1/2 -translate-y-1/2 bg-black bg-opacity-50 text-white p-2 rounded-full hover:bg-opacity-75 transition-opacity">
+            <button type="button" aria-label="Next image" onClick={nextImage} className="absolute right-2 top-1/2 -translate-y-1/2 bg-black bg-opacity-50 text-white p-2 rounded-full hover:bg-opacity-75 transition-opacity">
               &#10095;
             </button>
           </>
@@ -57,7 +59,7 @@ const CarCard: React.FC<CarCardProps> = ({ car, onBookNow }) => {
 
       <div className="p-6 flex-grow flex flex-col">
         <div className="flex justify-between items-start mb-4">
-            <h3 className="text-xl font-bold text-neutral-charcoal">{car.title}</h3>
+            <h3 className="text-xl font-bold text-foreground">{car.title}</h3>
             {!car.available && <span className="text-xs font-semibold bg-red-100 text-red-700 px-2 py-1 rounded-md">Not Available</span>}
         </div>
         
@@ -72,13 +74,13 @@ const CarCard: React.FC<CarCardProps> = ({ car, onBookNow }) => {
           </div>
           <div className="flex flex-col items-center">
             <GearIcon className="w-6 h-6 mb-1 text-primary" />
-            <span>{car.gearType}</span>
+            <span>{car.transmission}</span>
           </div>
         </div>
         
         <div className="mt-auto flex justify-between items-center">
           <div>
-            <span className="text-2xl font-bold text-neutral-charcoal">₹{car.pricePerDay}</span>
+            <span className="text-2xl font-bold text-foreground">₹{car.pricePerDay}</span>
             <span className="text-sm text-gray-500">/day</span>
           </div>
           <button
