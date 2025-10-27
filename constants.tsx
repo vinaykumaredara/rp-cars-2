@@ -1,6 +1,5 @@
-
 import React from 'react';
-import type { Car, Testimonial, Feature, Stat } from './types';
+import type { Testimonial, Feature, Stat } from './types';
 
 // Icon Components
 export const SeatIcon: React.FC<{ className?: string }> = ({ className }) => (
@@ -35,87 +34,22 @@ export const FleetIcon: React.FC<{ className?: string }> = ({ className }) => (
   <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 17h2l.64-2.56a2 2 0 0 0-1.94-2.44H5.3a2 2 0 0 0-1.94 2.44L4 17h2" /><path d="M19 17a2 2 0 1 1 0-4H5a2 2 0 1 1 0 4h14Z" /><path d="M5 13V6a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v7" /><path d="M12 12V8" /></svg>
 );
 
-
-export const CARS_DATA: Car[] = [
-  {
-    id: 1,
-    model: 'SWIFT LXI',
-    year: 2025,
-    area: 'Hyderabad',
-    seats: 5,
-    fuelType: 'Petrol',
-    gearType: 'Manual',
-    pricePerDay: 1700,
-    images: ['https://picsum.photos/550/350?random=1', 'https://picsum.photos/550/350?random=2', 'https://picsum.photos/550/350?random=3'],
-    available: true,
-    verified: true,
-  },
-  {
-    id: 2,
-    model: 'Maruti Baleno',
-    year: 2024,
-    area: 'Hyderabad',
-    seats: 5,
-    fuelType: 'Petrol',
-    gearType: 'Automatic',
-    pricePerDay: 2200,
-    images: ['https://picsum.photos/550/350?random=4', 'https://picsum.photos/550/350?random=5', 'https://picsum.photos/550/350?random=6'],
-    available: true,
-    verified: true,
-  },
-  {
-    id: 3,
-    model: 'Hyundai Creta',
-    year: 2023,
-    area: 'Hyderabad',
-    seats: 5,
-    fuelType: 'Diesel',
-    gearType: 'Manual',
-    pricePerDay: 2500,
-    images: ['https://picsum.photos/550/350?random=7', 'https://picsum.photos/550/350?random=8', 'https://picsum.photos/550/350?random=9'],
-    available: true,
-    verified: true,
-  },
-   {
-    id: 4,
-    model: 'Kia Seltos',
-    year: 2024,
-    area: 'Hyderabad',
-    seats: 5,
-    fuelType: 'Petrol',
-    gearType: 'Automatic',
-    pricePerDay: 2800,
-    images: ['https://picsum.photos/550/350?random=10', 'https://picsum.photos/550/350?random=11', 'https://picsum.photos/550/350?random=12'],
-    available: false,
-    verified: true,
-  },
-   {
-    id: 5,
-    model: 'Tata Nexon',
-    year: 2022,
-    area: 'Hyderabad',
-    seats: 5,
-    fuelType: 'Diesel',
-    gearType: 'Manual',
-    pricePerDay: 1900,
-    images: ['https://picsum.photos/550/350?random=13', 'https://picsum.photos/550/350?random=14', 'https://picsum.photos/550/350?random=15'],
-    available: true,
-    verified: false,
-  },
-   {
-    id: 6,
-    model: 'Mahindra XUV700',
-    year: 2025,
-    area: 'Hyderabad',
-    seats: 7,
-    fuelType: 'Diesel',
-    gearType: 'Automatic',
-    pricePerDay: 3500,
-    images: ['https://picsum.photos/550/350?random=16', 'https://picsum.photos/550/350?random=17', 'https://picsum.photos/550/350?random=18'],
-    available: true,
-    verified: true,
-  },
-];
+// Admin Dashboard Icons
+export const CarManagementIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 17h2l.64-2.56a2 2 0 0 0-1.94-2.44H5.3a2 2 0 0 0-1.94 2.44L4 17h2" /><path d="M19 17a2 2 0 1 1 0-4H5a2 2 0 1 1 0 4h14Z" /><path d="M5 13V6a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v7" /><path d="M12 12V8" /></svg>
+);
+export const BookingManagementIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+);
+export const LicenseVerificationIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+);
+export const PromoCodeIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+);
+export const UserManagementIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+);
 
 export const FEATURES_DATA: Feature[] = [
     { icon: InsuranceIcon, title: 'Premium Insurance', description: 'Comprehensive coverage for a worry-free journey.' },

@@ -19,7 +19,7 @@ const FeatureHighlights: React.FC = () => {
       <div className="container mx-auto px-4">
         <div className="text-center mb-12">
           <h2 className="text-3xl font-bold text-neutral-charcoal">Why Choose RP Cars?</h2>
-          <p className="text-lg text-gray-600 mt-2">We provide a premium experience with every rental.</p>
+          <p className="text-lg text-gray-600 mt-2">We provide a premium experience with every booking.</p>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
             {FEATURES_DATA.map(feature => (

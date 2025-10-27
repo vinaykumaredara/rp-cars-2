@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -20,35 +21,47 @@ const Modal: React.FC<ModalProps> = ({ isOpen, onClose }) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
-    try {
-      // Fix: Pass credentials as a single object to signIn and signUp
-      const { error } = isSignUp 
-        ? await signUp({ email, password }) 
-        : await signIn({ email, password });
+    
+    const response = isSignUp 
+      ? await signUp({ email, password }) 
+      : await signIn({ email, password });
 
-      if (error) {
-        throw error;
-      }
-      onClose(); // Close modal on success
-    } catch (err: any) {
-      setError(err.message || 'An unexpected error occurred.');
-    } finally {
-      setLoading(false);
+    const { error: authError } = response;
+
+    if (authError) {
+       if (isSignUp) {
+            if (authError.message.includes('User already registered')) {
+              setError('An account with this email already exists. Please sign in instead.');
+            } else {
+              setError(authError.message || 'An unexpected error occurred during sign up.');
+            }
+        } else { // It's a sign-in attempt
+            const errorMessage = authError.message.toLowerCase();
+            if (errorMessage.includes('user not found') || errorMessage.includes('email not found')) {
+                setError('Please create an account first, then log in to the website.');
+            } else if (errorMessage.includes('invalid login credentials')) {
+                setError('Invalid credentials');
+            } else {
+                setError(authError.message || 'An unexpected error occurred during sign in.');
+            }
+        }
+    } else {
+      // On any successful auth, close the modal.
+      // Redirection for admin is handled by the AuthContext listener.
+      onClose();
     }
+    setLoading(false);
   };
 
   const handleGoogleSignIn = async () => {
     setLoading(true);
     setError(null);
-    try {
-      const { error } = await signInWithGoogle();
-      if (error) throw error;
-      onClose();
-    } catch(err: any) {
-       setError(err.message || 'Failed to sign in with Google.');
-    } finally {
-      setLoading(false);
+    const { error } = await signInWithGoogle();
+    if (error) {
+       setError(error.message || 'Failed to sign in with Google. Please try again.');
+       setLoading(false);
     }
+    // On success, Supabase redirects and AuthContext listener handles the session.
   };
 
   const closeModal = () => {
@@ -89,7 +102,7 @@ const Modal: React.FC<ModalProps> = ({ isOpen, onClose }) => {
               required 
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-primary-blue focus:border-primary-blue transition" />
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-primary focus:border-primary transition" />
           </div>
           <div className="mb-6">
             <label htmlFor="password"className="block text-sm font-medium text-gray-700 mb-1">Password</label>
@@ -100,17 +113,17 @@ const Modal: React.FC<ModalProps> = ({ isOpen, onClose }) => {
               minLength={6}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-primary-blue focus:border-primary-blue transition" />
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-primary focus:border-primary transition" />
           </div>
 
-          <button type="submit" disabled={loading} className="w-full py-3 rounded-lg bg-primary-blue text-white font-semibold hover:bg-blue-700 transition-all duration-300 shadow-sm hover:shadow-md mb-4 disabled:bg-blue-300">
+          <button type="submit" disabled={loading} className="w-full py-3 rounded-lg bg-primary text-white font-semibold hover:bg-primary-hover transition-all duration-300 shadow-sm hover:shadow-md mb-4 disabled:bg-opacity-50">
             {loading ? 'Processing...' : (isSignUp ? 'Create Account' : 'Sign In')}
           </button>
         </form>
 
         <p className="text-center text-sm text-gray-600">
           {isSignUp ? 'Already have an account?' : "Don't have an account?"}
-          <button onClick={() => { setIsSignUp(!isSignUp); setError(null); }} className="font-semibold text-primary-blue hover:underline ml-1">
+          <button onClick={() => { setIsSignUp(!isSignUp); setError(null); }} className="font-semibold text-primary hover:underline ml-1">
             {isSignUp ? 'Sign In' : 'Sign Up'}
           </button>
         </p>

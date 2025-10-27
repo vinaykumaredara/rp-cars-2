@@ -9,7 +9,7 @@ const Footer: React.FC = () => {
           {/* Column 1: Brand & Social */}
           <div>
             <h3 className="text-2xl font-bold mb-4">RP CARS</h3>
-            <p className="text-gray-400 mb-4">Your premium car rental experience starts here. Quality, comfort, and reliability guaranteed.</p>
+            <p className="text-gray-400 mb-4">Your premium car experience starts here. Quality, comfort, and reliability guaranteed.</p>
             {/* Social Icons would go here */}
           </div>
 
@@ -30,7 +30,7 @@ const Footer: React.FC = () => {
             <ul className="space-y-2">
               <li><a href="#" className="text-gray-400 hover:text-white transition-colors">Self-Drive Cars</a></li>
               <li><a href="#" className="text-gray-400 hover:text-white transition-colors">Airport Transfers</a></li>
-              <li><a href="#" className="text-gray-400 hover:text-white transition-colors">Corporate Rentals</a></li>
+              <li><a href="#" className="text-gray-400 hover:text-white transition-colors">Corporate Bookings</a></li>
               <li><a href="#" className="text-gray-400 hover:text-white transition-colors">Wedding Cars</a></li>
             </ul>
           </div>

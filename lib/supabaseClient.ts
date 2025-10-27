@@ -1,16 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 
-// Fallback to placeholder values if environment variables are not set.
-// You MUST replace these with your actual Supabase project URL and Anon key in the environment settings.
-const placeholderUrl = 'https://example.supabase.co';
-const placeholderAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsImV4cCI6MTk4Mzg4ODAwMH0.dummy-key-for-local-development';
-
-const supabaseUrl = process.env.SUPABASE_URL || placeholderUrl;
-const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || placeholderAnonKey;
-
-if (supabaseUrl === placeholderUrl) {
-    console.warn("Supabase environment variables are not set. The app is using placeholder credentials. Please provide your own SUPABASE_URL and SUPABASE_ANON_KEY for the application to function correctly.");
-}
-
+// Use the user-provided Supabase URL and Anon key.
+const supabaseUrl = 'https://rcpkhtlvfvafympulywx.supabase.co';
+const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJjcGtodGx2ZnZhZnltcHVseXd4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTY1Mzg3OTMsImV4cCI6MjA3MjExNDc5M30.RE6vsYIpq44QrXwrvHDoHkfC9IE3Fwd-PfXFQ9_2cqE';
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);

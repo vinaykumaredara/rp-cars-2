@@ -5,7 +5,7 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.ico" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>RP Cars - Premium Car Rentals</title>
+    <title>RP Cars - Premium Car Service</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -18,16 +18,49 @@
               sans: ['Inter', 'sans-serif'],
             },
             colors: {
+              border: '#e2e8f0', // Border
+              input: '#e2e8f0', // Input
+              ring: '#3b82f6', // Ring
+              background: '#ffffff', // Background
+              foreground: '#212630', // Foreground
               primary: {
-                blue: '#1959c1',
+                DEFAULT: '#6366F1', // Primary (Indigo)
+                foreground: '#FFFFFF', // Primary Foreground
+                hover: '#4f46e5',
+              },
+              secondary: {
+                DEFAULT: '#f1f5f9',
+                foreground: '#0f172a',
+              },
+              destructive: {
+                DEFAULT: '#ef4444', // Destructive
+                foreground: '#FFFFFF',
+              },
+              muted: {
+                DEFAULT: '#f1f5f9', // Muted
+                foreground: '#7a8291', // Muted Foreground
               },
               accent: {
-                gold: '#FFD700',
+                DEFAULT: '#8B5CF6', // Accent Purple (Violet)
+                foreground: '#FFFFFF',
               },
-              neutral: {
-                lightgrey: '#f5f7fa',
-                charcoal: '#212121',
+              popover: {
+                DEFAULT: '#ffffff',
+                foreground: '#020817',
               },
+              card: {
+                DEFAULT: '#ffffff',
+                foreground: '#020817',
+              },
+              // Legacy colors for compatibility
+              'primary-blue': '#6366F1',
+              'neutral-charcoal': '#212630',
+              'neutral-lightgrey': '#f5f7fa',
+            },
+            borderRadius: {
+              lg: '0.5rem',
+              md: 'calc(0.5rem - 2px)',
+              sm: 'calc(0.5rem - 4px)',
             },
           },
         },

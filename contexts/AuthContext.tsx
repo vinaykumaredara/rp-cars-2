@@ -1,15 +1,17 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
-import type { Session, User } from '../types';
-import type { AuthError, AuthResponse, SignInWithPasswordCredentials, SignUpWithPasswordCredentials } from '@supabase/supabase-js';
+import type { Session, User, Role } from '../types';
+import type { AuthError, AuthResponse, OAuthResponse, SignInWithPasswordCredentials, SignUpWithPasswordCredentials } from '@supabase/supabase-js';
 
 interface AuthContextType {
   session: Session | null;
   user: User | null;
+  role: Role | null;
+  loading: boolean;
   signIn: (credentials: SignInWithPasswordCredentials) => Promise<AuthResponse>;
   signUp: (credentials: SignUpWithPasswordCredentials) => Promise<AuthResponse>;
   signOut: () => Promise<{ error: AuthError | null }>;
-  signInWithGoogle: () => Promise<AuthResponse>;
+  signInWithGoogle: () => Promise<OAuthResponse>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -17,20 +19,55 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [session, setSession] = useState<Session | null>(null);
   const [user, setUser] = useState<User | null>(null);
+  const [role, setRole] = useState<Role | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const getSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
+    const getSessionAndRole = async () => {
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
       setSession(session);
       setUser(session?.user ?? null);
+
+      if (session?.user) {
+        const { data: roleData } = await supabase
+          .from('user_roles')
+          .select('role')
+          .eq('user_id', session.user.id)
+          .single();
+        setRole(roleData?.role as Role ?? 'user'); // Default to 'user' if no role found
+      } else {
+        setRole(null);
+      }
       setLoading(false);
     };
-    getSession();
+    
+    getSessionAndRole();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       setSession(session);
       setUser(session?.user ?? null);
+
+      if (session?.user) {
+        // Fetch role on sign-in or session refresh
+        setLoading(true);
+        const { data: roleData } = await supabase
+          .from('user_roles')
+          .select('role')
+          .eq('user_id', session.user.id)
+          .single();
+        const newRole = roleData?.role as Role ?? 'user';
+        setRole(newRole);
+        
+        // Redirect admin on sign-in using SPA-friendly navigation
+        if (_event === 'SIGNED_IN' && newRole === 'admin') {
+            if (!window.location.hash.startsWith('#/admin')) {
+                window.location.hash = '#/admin';
+            }
+        }
+      } else {
+        setRole(null);
+      }
+      setLoading(false);
     });
 
     return () => {
@@ -38,20 +75,32 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, []);
 
-  const value = {
+  const value: AuthContextType = {
     session,
     user,
-    signIn: (credentials: SignInWithPasswordCredentials) => supabase.auth.signInWithPassword(credentials),
-    signUp: (credentials: SignUpWithPasswordCredentials) => supabase.auth.signUp(credentials),
-    signOut: () => supabase.auth.signOut(),
-    signInWithGoogle: () => supabase.auth.signInWithOAuth({
-      provider: 'google',
-    }),
+    role,
+    loading,
+    signIn: (credentials: SignInWithPasswordCredentials): Promise<AuthResponse> => {
+        return supabase.auth.signInWithPassword(credentials);
+    },
+    signUp: (credentials: SignUpWithPasswordCredentials): Promise<AuthResponse> => {
+        return supabase.auth.signUp(credentials);
+    },
+    signOut: () => {
+        setRole(null); // Clear role on sign out
+        window.location.hash = '#/'; // Redirect to home on sign out
+        return supabase.auth.signOut();
+    },
+    signInWithGoogle: (): Promise<OAuthResponse> => {
+        return supabase.auth.signInWithOAuth({
+          provider: 'google',
+        });
+    },
   };
 
   return (
     <AuthContext.Provider value={value}>
-      {!loading && children}
+      {children}
     </AuthContext.Provider>
   );
 };

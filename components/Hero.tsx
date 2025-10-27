@@ -8,7 +8,7 @@ const Hero: React.FC = () => {
         <div className="grid lg:grid-cols-2 gap-12 items-center">
           <div className="text-center lg:text-left">
             <h1 className="text-4xl md:text-5xl font-bold text-neutral-charcoal leading-tight mb-4">
-              Premium Car Rental Experience
+              Premium Car Experience
             </h1>
             <p className="text-lg text-gray-600 mb-8">
               Discover our fleet of high-quality cars for a seamless and comfortable journey. Unmatched service, available 24/7.

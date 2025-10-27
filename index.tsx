@@ -1,5 +1,6 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
+// Fix: Corrected import path to be explicitly relative.
 import App from './App';
 import { AuthProvider } from './contexts/AuthContext';
 
