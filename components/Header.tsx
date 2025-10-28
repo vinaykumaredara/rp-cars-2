@@ -1,5 +1,3 @@
-
-
 import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -126,4 +124,4 @@ const Header: React.FC<HeaderProps> = ({ onSignInClick }) => {
   );
 };
 
-export default Header;
+export default React.memo(Header);

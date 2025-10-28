@@ -8,7 +8,8 @@ import AdminPageLayout from './AdminPageLayout';
 
 const BackendSetupInstructions: React.FC<{ onRefresh: () => void; isLoading: boolean }> = ({ onRefresh, isLoading }) => {
   // Dynamically create the project-specific SQL editor URL
-  const projectRef = new URL(supabase.rest.url).hostname.split('.')[0];
+  // FIX: The `supabase.rest.url` property is protected. Use the known public URL to extract the project reference.
+  const projectRef = new URL('https://rcpkhtlvfvafympulywx.supabase.co').hostname.split('.')[0];
   const sqlEditorLink = `https://supabase.com/dashboard/project/${projectRef}/sql/new`;
 
   const setupSql = `-- This is a comprehensive script to set up all necessary database objects for User Management.
@@ -176,6 +177,80 @@ $$;
 -- Fix: Grant execution to authenticated users for the get_user_role(uuid) function
 -- It must specify the parameter type 'uuid'.
 GRANT EXECUTE ON FUNCTION public.get_user_role(uuid) TO authenticated;
+
+-- 10. Create 'bookings' table
+CREATE TABLE IF NOT EXISTS public.bookings (
+  id uuid NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE SET NULL,
+  car_id uuid NOT NULL REFERENCES public.cars(id) ON DELETE SET NULL,
+  start_datetime timestamptz NOT NULL,
+  end_datetime timestamptz NOT NULL,
+  total_amount numeric(10, 2) NOT NULL,
+  amount_paid numeric(10, 2),
+  payment_mode text,
+  status text NOT NULL DEFAULT 'pending',
+  extras jsonb,
+  user_phone text
+);
+
+-- 11. Enable RLS on 'bookings' and create policies
+ALTER TABLE public.bookings ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Admins can manage all bookings." ON public.bookings;
+CREATE POLICY "Admins can manage all bookings." ON public.bookings FOR ALL
+  USING (public.is_admin());
+DROP POLICY IF EXISTS "Users can view their own bookings." ON public.bookings;
+CREATE POLICY "Users can view their own bookings." ON public.bookings FOR SELECT
+  USING (auth.uid() = user_id);
+
+-- 12. Create/replace function to get all bookings for admin dashboard
+CREATE OR REPLACE FUNCTION get_all_bookings()
+RETURNS TABLE (
+  id uuid,
+  created_at timestamptz,
+  user_id uuid,
+  customer_name text,
+  customer_phone text,
+  car_id uuid,
+  car_title text,
+  start_datetime timestamptz,
+  end_datetime timestamptz,
+  total_amount numeric,
+  status text,
+  payment_mode text
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+BEGIN
+  IF NOT public.is_admin() THEN
+    RAISE EXCEPTION 'Only admins can view all bookings.';
+  END IF;
+
+  RETURN QUERY
+  SELECT
+    b.id,
+    b.created_at,
+    b.user_id,
+    p.full_name AS customer_name,
+    b.user_phone AS customer_phone,
+    b.car_id,
+    c.title AS car_title,
+    b.start_datetime,
+    b.end_datetime,
+    b.total_amount,
+    b.status,
+    b.payment_mode
+  FROM
+    public.bookings b
+  LEFT JOIN
+    public.profiles p ON b.user_id = p.id
+  LEFT JOIN
+    public.cars c ON b.car_id = c.id
+  ORDER BY
+    b.created_at DESC;
+END;
+$$;
 `;
   
   return (

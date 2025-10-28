@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { FEATURES_DATA } from '../constants';
 import type { Feature } from '../types';
@@ -31,4 +30,4 @@ const FeatureHighlights: React.FC = () => {
   );
 };
 
-export default FeatureHighlights;
+export default React.memo(FeatureHighlights);

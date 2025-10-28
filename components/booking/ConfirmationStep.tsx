@@ -21,7 +21,7 @@ const ConfirmationStep: React.FC<ConfirmationStepProps> = ({ car, bookingData, o
     const end = new Date(`${returnDate}T${returnTime}`);
     if (isNaN(start.getTime()) || isNaN(end.getTime()) || end <= start) return 0;
     const diffMs = end.getTime() - start.getTime();
-    return Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+    return Math.max(Math.ceil(diffMs / (1000 * 60 * 60 * 24)), 1);
   }, [datesData]);
 
   const baseRentalPrice = car ? numberOfDays * car.pricePerDay : 0;
@@ -46,7 +46,10 @@ const ConfirmationStep: React.FC<ConfirmationStepProps> = ({ car, bookingData, o
       <div className="bg-blue-50 p-4 rounded-lg text-left mx-auto max-w-sm">
         <h4 className="font-semibold text-lg text-foreground mb-2">Booking Summary</h4>
         <div className="space-y-1 text-gray-700 text-sm">
-          <div className="flex justify-between"><span>Booking ID</span><span className="font-semibold">#TEMP-BOOK-ID</span></div> {/* TODO: Replace with actual booking ID */}
+          <div className="flex justify-between">
+              <span>Booking ID</span>
+              <span className="font-semibold">#{bookingData.bookingId?.split('-')[0].toUpperCase()}</span>
+          </div>
           <div className="flex justify-between"><span>Pickup</span><span>{datesData?.pickupDate} {datesData?.pickupTime}</span></div>
           <div className="flex justify-between"><span>Return</span><span>{datesData?.returnDate} {datesData?.returnTime}</span></div>
           <div className="flex justify-between"><span>Amount Paid</span><span className="font-bold">₹{amountPaid.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>

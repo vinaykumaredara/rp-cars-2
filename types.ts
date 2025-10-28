@@ -95,4 +95,22 @@ export interface BookingDraft {
   licenseUploaded?: boolean; // Or more detailed license info
   extrasData?: ExtrasData;
   paymentData?: PaymentData;
+  bookingId?: string; // Added for confirmation step
+}
+
+// === New Types for Admin Booking Management ===
+
+export interface BookingDetail {
+  id: string;
+  created_at: string;
+  user_id: string;
+  customer_name: string | null;
+  customer_phone: string | null;
+  car_id: string;
+  car_title: string | null;
+  start_datetime: string;
+  end_datetime: string;
+  total_amount: number;
+  status: string;
+  payment_mode: string | null;
 }

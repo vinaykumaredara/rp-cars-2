@@ -25,7 +25,7 @@ const PaymentStep: React.FC<PaymentStepProps> = ({ car, bookingData, updateBooki
     const end = new Date(`${returnDate}T${returnTime}`);
     if (isNaN(start.getTime()) || isNaN(end.getTime()) || end <= start) return 0;
     const diffMs = end.getTime() - start.getTime();
-    return Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+    return Math.max(Math.ceil(diffMs / (1000 * 60 * 60 * 24)), 1);
   }, [datesData]);
 
   const baseRentalPrice = car ? numberOfDays * car.pricePerDay : 0;
@@ -52,26 +52,43 @@ const PaymentStep: React.FC<PaymentStepProps> = ({ car, bookingData, updateBooki
     setError(null);
 
     try {
-      // TODO: Implement actual payment processing via Supabase Edge Function ('create-hold' function)
-      // This would typically involve:
-      // 1. Calling your `create-hold` Edge Function with booking details.
-      // 2. The Edge Function interacts with a payment gateway (Stripe/Razorpay) to create a Payment Intent.
-      // 3. The Edge Function creates `bookings` and `payments` records with status 'pending'.
-      // 4. The Edge Function returns a client_secret or redirect URL for the frontend to complete payment.
-      // For this phase, we simulate a successful payment.
-
-      await new Promise(resolve => setTimeout(resolve, 2000)); // Simulate API call
+      // Simulate API call for payment gateway interaction
+      await new Promise(resolve => setTimeout(resolve, 1500)); 
 
       console.log(`Simulating ${paymentMode} payment of ₹${amountToPay.toLocaleString()}`);
 
-      // After simulated successful payment processing:
+      const startDateTime = new Date(`${datesData.pickupDate}T${datesData.pickupTime}`);
+      const endDateTime = new Date(`${datesData.returnDate}T${datesData.returnTime}`);
+
+      const bookingRecord = {
+        user_id: user.id,
+        car_id: car.id,
+        start_datetime: startDateTime.toISOString(),
+        end_datetime: endDateTime.toISOString(),
+        total_amount: totalAmount,
+        amount_paid: amountToPay,
+        payment_mode: paymentMode,
+        status: 'confirmed', // Simulating successful payment, in real app this would be 'pending' then confirmed by webhook
+        extras: extrasData?.extras.filter(e => e.selected),
+        user_phone: bookingData.phoneData?.phone
+      };
+
+      const { data, error: insertError } = await supabase
+        .from('bookings')
+        .insert(bookingRecord)
+        .select()
+        .single(); // Use single() as we expect one record back
+
+      if (insertError) {
+        throw new Error(`Failed to save your booking: ${insertError.message}`);
+      }
+
+      // After successful insert, store the new booking ID and proceed
       updateBookingData({ 
-        paymentData: { paymentMode: paymentMode }
+        paymentData: { paymentMode: paymentMode },
+        bookingId: data.id 
       });
 
-      // TODO: Actual database booking/payment insertion after successful gateway interaction.
-      // This is currently in BookingModal.tsx's old logic and needs to be moved to backend functions.
-      // For now, we manually confirm (as a placeholder for backend success).
       nextStep(); // Proceed to confirmation
       
     } catch (err: any) {

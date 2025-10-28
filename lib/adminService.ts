@@ -1,4 +1,6 @@
 import { supabase } from './supabaseClient';
+// FIX: The DashboardStats type is defined locally in this file, so it should not be imported from `../types`.
+import type { BookingDetail } from '../types';
 
 export interface DashboardStats {
   total_cars: number;
@@ -19,4 +21,18 @@ export const fetchDashboardStats = async (): Promise<{ stats: DashboardStats | n
   }
 
   return { stats: data, error: null };
+};
+
+export const fetchAllBookings = async (): Promise<{ bookings: BookingDetail[]; error: string | null }> => {
+  const { data, error } = await supabase.rpc('get_all_bookings');
+
+  if (error) {
+    console.error('Error fetching all bookings:', error);
+    if (error.code === '42883' || error.message.includes('Could not find the function')) {
+      return { bookings: [], error: "Backend not configured: The 'get_all_bookings' function is missing. Please run the setup script from the User Management page." };
+    }
+    return { bookings: [], error: `Failed to fetch bookings: ${error.message}` };
+  }
+
+  return { bookings: data || [], error: null };
 };

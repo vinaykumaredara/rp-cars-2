@@ -1,4 +1,3 @@
-
 import React from 'react';
 
 const Hero: React.FC = () => {
@@ -47,4 +46,4 @@ const Hero: React.FC = () => {
   );
 };
 
-export default Hero;
+export default React.memo(Hero);

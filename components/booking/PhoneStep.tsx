@@ -29,7 +29,7 @@ const PhoneStep: React.FC<PhoneStepProps> = ({
           .from('profiles')
           .select('phone, status')
           .eq('id', user.id)
-          .single();
+          .maybeSingle(); // Changed from .single() to avoid error if profile doesn't exist
 
         if (profileError) {
           console.error('Error fetching phone in PhoneStep:', profileError);
@@ -60,14 +60,13 @@ const PhoneStep: React.FC<PhoneStepProps> = ({
     setIsLoading(true);
     setError(null);
 
-    // Update the phone number in the profiles table
-    const { error: updateError } = await supabase
+    // Use upsert to create a profile if it doesn't exist, or update it if it does.
+    const { error: upsertError } = await supabase
       .from('profiles')
-      .update({ phone: phoneNumber, updated_at: new Date().toISOString() })
-      .eq('id', user.id);
+      .upsert({ id: user.id, phone: phoneNumber, status: 'active' as UserStatus, updated_at: new Date().toISOString() }, { onConflict: 'id' });
 
-    if (updateError) {
-      console.error('Error updating phone number:', updateError);
+    if (upsertError) {
+      console.error('Error updating phone number:', upsertError);
       setError('Failed to save phone number. Please try again.');
     } else {
       updateBookingData({ phoneData: { phone: phoneNumber } });

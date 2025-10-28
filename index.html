@@ -8,7 +8,8 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="preload" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" as="style" onload="this.onload=null;this.rel='stylesheet'">
+    <noscript><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"></noscript>
     <script>
       tailwind.config = {
         theme: {
@@ -79,6 +80,18 @@
 }
 </script>
     <script type="module" src="/index.tsx"></script>
+    <style>
+      .admin-loader {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 100vh;
+        background-color: #f1f5f9;
+        color: #4a5568;
+        font-family: 'Inter', sans-serif;
+        font-size: 1.125rem;
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>

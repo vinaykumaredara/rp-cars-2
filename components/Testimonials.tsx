@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { TESTIMONIALS_DATA } from '../constants';
 import type { Testimonial } from '../types';
@@ -36,4 +35,4 @@ const Testimonials: React.FC = () => {
   );
 };
 
-export default Testimonials;
+export default React.memo(Testimonials);

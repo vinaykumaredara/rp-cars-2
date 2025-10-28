@@ -1,5 +1,3 @@
-
-
 import React, { useState } from 'react';
 import type { Car } from '../types';
 import { SeatIcon, FuelIcon, GearIcon, MapPinIcon } from '../constants';
@@ -32,6 +30,9 @@ const CarCard: React.FC<CarCardProps> = ({ car, onBookNow }) => {
             src={car.images[currentImageIndex]} 
             alt={car.title} 
             className="w-full h-56 object-cover" 
+            loading="lazy"
+            width="600"
+            height="400"
           />
         ) : (
           <div className="w-full h-56 bg-gray-200 flex items-center justify-center">
@@ -96,4 +97,4 @@ const CarCard: React.FC<CarCardProps> = ({ car, onBookNow }) => {
   );
 };
 
-export default CarCard;
+export default React.memo(CarCard);

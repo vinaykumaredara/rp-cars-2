@@ -1,6 +1,4 @@
-
-
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useEffect, lazy, Suspense } from 'react';
 import Header from './components/Header';
 import Hero from './components/Hero';
 import SearchFilter from './components/SearchFilter';
@@ -11,19 +9,22 @@ import Testimonials from './components/Testimonials';
 import CTA from './components/CTA';
 import Footer from './components/Footer';
 import Modal from './components/Modal';
-import BookingModal from './components/BookingModal';
-import AdminDashboard from './components/AdminDashboard';
-import CarManagement from './components/CarManagement';
-import BookingManagement from './components/BookingManagement';
-import UserManagement from './components/UserManagement';
-import LicenseVerification from './components/LicenseVerification';
-import PromoCodeManagement from './components/PromoCodeManagement';
-import { fetchCarsFromDB } from './lib/carService'; // Import the new service
+import { fetchCarsFromDB } from './lib/carService';
 import type { Car, FuelType } from './types';
 import { useAuth } from './contexts/AuthContext';
-import AIAssistant from './components/AIAssistant';
 
 const CARS_PER_PAGE = 9;
+
+// Lazy-load heavy components
+const BookingModal = lazy(() => import('./components/BookingModal'));
+const AIAssistant = lazy(() => import('./components/AIAssistant'));
+const AdminDashboard = lazy(() => import('./components/AdminDashboard'));
+const CarManagement = lazy(() => import('./components/CarManagement'));
+const BookingManagement = lazy(() => import('./components/BookingManagement'));
+const UserManagement = lazy(() => import('./components/UserManagement'));
+const LicenseVerification = lazy(() => import('./components/LicenseVerification'));
+const PromoCodeManagement = lazy(() => import('./components/PromoCodeManagement'));
+
 
 // Helper to determine the current view from the hash
 const getCurrentView = () => {
@@ -59,7 +60,7 @@ const App: React.FC = () => {
     // State for filters
     const [searchTerm, setSearchTerm] = useState('');
     const [seatFilter, setSeatFilter] = useState<number | 'all'>('all');
-    const [fuelFilter, setFuelFilter] = useState<FuelType | 'all'>('all');
+    const [fuelFilter, setFuelFilter] = useState<FuelType[]>([]);
     
     // Simple hash-based routing state
     const [view, setView] = useState(getCurrentView());
@@ -101,8 +102,6 @@ const App: React.FC = () => {
         };
         window.addEventListener('hashchange', onHashChange);
 
-        // This check runs on mount and whenever the user/role state changes.
-        // If the user is on any admin route but isn't an admin, redirect them.
         if (getCurrentView().startsWith('admin') && !authLoading && !isAdmin) {
             window.location.hash = '#/';
         }
@@ -110,7 +109,7 @@ const App: React.FC = () => {
         return () => {
             window.removeEventListener('hashchange', onHashChange);
         };
-    }, [user, isAdmin, authLoading]); // Re-evaluate access control when user/role changes.
+    }, [user, isAdmin, authLoading]);
     
     const handleBookNow = (car: Car) => {
         if (!user) {
@@ -137,7 +136,6 @@ const App: React.FC = () => {
 
         if (error) {
             setLoadMoreError('Failed to load more cars. Please try again.');
-            console.error("Failed to load more cars:", error);
         } else if (newCars.length > 0) {
             setCars(prevCars => {
                 const updatedCars = [...prevCars, ...newCars];
@@ -153,26 +151,31 @@ const App: React.FC = () => {
         setIsFetchingMore(false);
     };
     
-    // Render Admin section or Home section based on view and auth
+    // Render Admin section with Suspense for lazy loading
     if (view.startsWith('admin') && isAdmin) {
-        switch(view) {
-            case 'admin':
-                return <AdminDashboard />;
-            case 'admin-cars':
-                return <CarManagement />;
-            case 'admin-bookings':
-                return <BookingManagement />;
-            case 'admin-users':
-                return <UserManagement />;
-            case 'admin-licenses':
-                return <LicenseVerification />;
-            case 'admin-promos':
-                return <PromoCodeManagement />;
-            default:
-                // If hash is invalid, redirect to admin home
-                window.location.hash = '#/admin';
-                return null;
-        }
+        return (
+            <Suspense fallback={<div className="admin-loader">Loading Admin Panel...</div>}>
+                {(() => {
+                    switch(view) {
+                        case 'admin':
+                            return <AdminDashboard />;
+                        case 'admin-cars':
+                            return <CarManagement />;
+                        case 'admin-bookings':
+                            return <BookingManagement />;
+                        case 'admin-users':
+                            return <UserManagement />;
+                        case 'admin-licenses':
+                            return <LicenseVerification />;
+                        case 'admin-promos':
+                            return <PromoCodeManagement />;
+                        default:
+                            window.location.hash = '#/admin';
+                            return null;
+                    }
+                })()}
+            </Suspense>
+        );
     }
 
     return (
@@ -235,14 +238,17 @@ const App: React.FC = () => {
             <Footer />
 
             <Modal isOpen={isSignInModalOpen} onClose={() => setIsSignInModalOpen(false)} />
-            {selectedCar && (
-                <BookingModal 
-                    isOpen={isBookingModalOpen}
-                    onClose={() => setIsBookingModalOpen(false)}
-                    car={selectedCar}
-                />
-            )}
-            <AIAssistant />
+            
+            <Suspense fallback={null}>
+                {selectedCar && (
+                    <BookingModal 
+                        isOpen={isBookingModalOpen}
+                        onClose={() => setIsBookingModalOpen(false)}
+                        car={selectedCar}
+                    />
+                )}
+                <AIAssistant />
+            </Suspense>
         </div>
     );
 };

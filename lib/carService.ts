@@ -1,4 +1,5 @@
 
+
 import { supabase } from './supabaseClient';
 import type { Car, FuelType } from '../types';
 
@@ -7,7 +8,7 @@ interface FetchCarsOptions {
   limit?: number;
   searchTerm?: string;
   seatFilter?: number | 'all';
-  fuelFilter?: FuelType | 'all';
+  fuelFilter?: FuelType[];
 }
 
 
@@ -33,8 +34,8 @@ export const fetchCarsFromDB = async (options: FetchCarsOptions = {}): Promise<{
         query = query.eq('seats', seatFilter);
     }
 
-    if (fuelFilter && fuelFilter !== 'all') {
-        query = query.eq('fuel_type', fuelFilter);
+    if (fuelFilter && fuelFilter.length > 0) {
+        query = query.in('fuel_type', fuelFilter);
     }
 
 

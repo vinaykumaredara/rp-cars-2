@@ -90,11 +90,12 @@ export const useBooking = (car: Car | null): UseBookingResult => {
         .from('profiles')
         .select('phone, status')
         .eq('id', user.id)
-        .single();
+        .maybeSingle(); // Changed from .single() to .maybeSingle() to prevent error on new users
 
       if (profileError) {
+        // The error object might be complex, so let's log it but show a user-friendly message.
         console.error('Error fetching user profile for phone check:', profileError);
-        setBookingError('Failed to load user profile for phone verification.');
+        setBookingError('Failed to load your profile information. Please try again later.');
         setIsLoading(false);
         return;
       }
