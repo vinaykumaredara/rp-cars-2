@@ -7,9 +7,9 @@ import ConfirmationModal from './ConfirmationModal';
 import AdminPageLayout from './AdminPageLayout';
 
 const BackendSetupInstructions: React.FC<{ onRefresh: () => void; isLoading: boolean }> = ({ onRefresh, isLoading }) => {
-  // Dynamically create the project-specific SQL editor URL
-  // FIX: The `supabase.rest.url` property is protected. Use the known public URL to extract the project reference.
-  const projectRef = new URL('https://rcpkhtlvfvafympulywx.supabase.co').hostname.split('.')[0];
+  // FIX: Robustly parse the project reference from the hardcoded public Supabase URL.
+  const supabaseUrl = 'https://rcpkhtlvfvafympulywx.supabase.co';
+  const projectRef = new URL(supabaseUrl).hostname.split('.')[0];
   const sqlEditorLink = `https://supabase.com/dashboard/project/${projectRef}/sql/new`;
 
   const setupSql = `-- This is a comprehensive script to set up all necessary database objects for User Management.
@@ -174,7 +174,7 @@ EXCEPTION
 END;
 $$;
 
--- Fix: Grant execution to authenticated users for the get_user_role(uuid) function
+-- FIX: Grant execution to authenticated users for the get_user_role(uuid) function
 -- It must specify the parameter type 'uuid'.
 GRANT EXECUTE ON FUNCTION public.get_user_role(uuid) TO authenticated;
 

@@ -236,8 +236,27 @@ const AIAssistant: React.FC = () => {
     const [userInput, setUserInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
 
+    const [aiInstance, setAiInstance] = useState<GoogleGenAI | null>(null);
+    const [isAiEnabled, setIsAiEnabled] = useState(false);
+
     const chatContainerRef = useRef<HTMLDivElement>(null);
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
+
+    useEffect(() => {
+        const apiKey = process.env.API_KEY;
+        if (apiKey) {
+            try {
+                const ai = new GoogleGenAI({ apiKey });
+                setAiInstance(ai);
+                setIsAiEnabled(true);
+            } catch (e) {
+                console.error("Failed to initialize Google Gemini AI:", e);
+                setIsAiEnabled(false);
+            }
+        } else {
+            console.warn("API_KEY is not configured. AI Assistant is disabled.");
+            setIsAiEnabled(false);
+        }
+    }, []);
 
     useEffect(() => {
         if (chatContainerRef.current) {
@@ -247,7 +266,7 @@ const AIAssistant: React.FC = () => {
 
     const handleSendMessage = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!userInput.trim()) return;
+        if (!userInput.trim() || !aiInstance) return;
 
         const userMessage: Message = { role: 'user', content: userInput };
         setMessages(prev => [...prev, userMessage]);
@@ -255,7 +274,7 @@ const AIAssistant: React.FC = () => {
         setIsLoading(true);
 
         try {
-            const response = await ai.models.generateContent({
+            const response = await aiInstance.models.generateContent({
                 model: 'gemini-2.5-flash',
                 contents: [{ role: 'user', parts: [{ text: userInput }] }],
                 config: {
@@ -274,6 +293,10 @@ const AIAssistant: React.FC = () => {
             setIsLoading(false);
         }
     };
+    
+    if (!isAiEnabled) {
+        return null;
+    }
 
     return (
         <>
@@ -324,7 +347,7 @@ const AIAssistant: React.FC = () => {
                                 />
                                 <button
                                     type="submit"
-                                    disabled={isLoading}
+                                    disabled={isLoading || !aiInstance}
                                     className="bg-primary text-white p-3 rounded-full hover:bg-primary-hover disabled:bg-opacity-50"
                                     aria-label="Send message"
                                 >
