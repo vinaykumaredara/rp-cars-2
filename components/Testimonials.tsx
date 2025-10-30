@@ -19,7 +19,7 @@ const TestimonialCard: React.FC<{ testimonial: Testimonial }> = ({ testimonial }
 
 const Testimonials: React.FC = () => {
   return (
-    <section className="py-16 lg:py-24 bg-muted">
+    <section id="testimonials" className="py-16 lg:py-24 bg-muted">
       <div className="container mx-auto px-4">
         <div className="text-center mb-12">
           <h2 className="text-3xl font-bold text-foreground">What Our Customers Say</h2>

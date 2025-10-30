@@ -1,6 +1,23 @@
-import React from 'react';
+import React, { useCallback } from 'react';
 
 const CTA: React.FC = () => {
+  const handleSmoothScroll = useCallback((e: React.MouseEvent<HTMLAnchorElement>) => {
+    e.preventDefault();
+    const targetId = e.currentTarget.getAttribute('href');
+    if (!targetId) return;
+
+    const element = document.querySelector(targetId);
+    if (element) {
+      element.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start'
+      });
+      // The history.pushState call has been removed to prevent SecurityErrors in sandboxed environments.
+    } else {
+      window.location.hash = targetId;
+    }
+  }, []);
+
   return (
     <section className="bg-primary text-white">
       <div className="container mx-auto px-4 py-16 text-center">
@@ -9,10 +26,10 @@ const CTA: React.FC = () => {
           Don't wait any longer. Find the perfect car for your next adventure and enjoy the best car service in town.
         </p>
         <div className="flex justify-center space-x-4">
-          <a href="#cars" className="px-8 py-3 rounded-lg bg-white text-primary font-semibold hover:bg-gray-100 transition-all duration-300 shadow-md hover:shadow-lg transform hover:-translate-y-0.5">
+          <a href="#cars" onClick={handleSmoothScroll} className="px-8 py-3 rounded-lg bg-white text-primary font-semibold hover:bg-gray-100 transition-all duration-300 shadow-md hover:shadow-lg transform hover:-translate-y-0.5">
             Start Your Journey
           </a>
-          <a href="#features" className="px-8 py-3 rounded-lg bg-transparent border-2 border-white text-white font-semibold hover:bg-white hover:text-primary transition-all duration-300">
+          <a href="#features" onClick={handleSmoothScroll} className="px-8 py-3 rounded-lg bg-transparent border-2 border-white text-white font-semibold hover:bg-white hover:text-primary transition-all duration-300">
             Learn More
           </a>
         </div>

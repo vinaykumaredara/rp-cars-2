@@ -1,7 +1,23 @@
-
-import React from 'react';
+import React, { useCallback } from 'react';
 
 const Footer: React.FC = () => {
+  const handleSmoothScroll = useCallback((e: React.MouseEvent<HTMLAnchorElement>) => {
+    e.preventDefault();
+    const targetId = e.currentTarget.getAttribute('href');
+    if (!targetId || targetId === '#') return; // Ignore empty or top-of-page links
+
+    const element = document.querySelector(targetId);
+    if (element) {
+      element.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start'
+      });
+      // The history.pushState call has been removed to prevent SecurityErrors in sandboxed environments.
+    } else {
+      window.location.hash = targetId;
+    }
+  }, []);
+
   return (
     <footer id="contact" className="bg-foreground text-white pt-16 pb-8">
       <div className="container mx-auto px-4">
@@ -17,9 +33,9 @@ const Footer: React.FC = () => {
           <div>
             <h4 className="text-lg font-semibold mb-4">Quick Links</h4>
             <ul className="space-y-2">
-              <li><a href="#cars" className="text-gray-400 hover:text-white transition-colors">Browse Cars</a></li>
-              <li><a href="#features" className="text-gray-400 hover:text-white transition-colors">Features</a></li>
-              <li><a href="#" className="text-gray-400 hover:text-white transition-colors">Testimonials</a></li>
+              <li><a href="#cars" onClick={handleSmoothScroll} className="text-gray-400 hover:text-white transition-colors">Browse Cars</a></li>
+              <li><a href="#features" onClick={handleSmoothScroll} className="text-gray-400 hover:text-white transition-colors">Features</a></li>
+              <li><a href="#testimonials" onClick={handleSmoothScroll} className="text-gray-400 hover:text-white transition-colors">Testimonials</a></li>
               <li><a href="#" className="text-gray-400 hover:text-white transition-colors">FAQs</a></li>
             </ul>
           </div>
@@ -41,7 +57,7 @@ const Footer: React.FC = () => {
             <ul className="space-y-2 text-gray-400">
               <li className="flex items-start"><span className="mr-2 mt-1">📍</span><span>123 Road, Hyderabad, Telangana, India</span></li>
               <li className="flex items-start"><span className="mr-2 mt-1">📧</span><span>contact@rpcars.info</span></li>
-              <li className="flex items-start"><span className="mr-2 mt-1">📞</span><span>+91 12345 67890</span></li>
+              <li className="flex items-start"><span className="mr-2 mt-1">📞</span><span>+91 8897072640</span></li>
             </ul>
           </div>
         </div>

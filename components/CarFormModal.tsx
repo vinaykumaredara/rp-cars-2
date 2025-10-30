@@ -1,8 +1,7 @@
-
-
 import React, { useState, useEffect, useCallback } from 'react';
-import { supabase } from '../lib/supabaseClient';
-import type { Car, FuelType, GearType } from '../types';
+import { upsertCar } from '../lib/carService';
+import type { Car, FuelType, GearType, ImageState, CarFormData } from '../types';
+import { useToast } from '../contexts/ToastContext';
 
 interface CarFormModalProps {
   isOpen: boolean;
@@ -11,35 +10,16 @@ interface CarFormModalProps {
   car: Car | null;
 }
 
-type ImageState = {
-    type: 'existing';
-    path: string;
-    url: string;
-} | {
-    type: 'new';
-    file: File;
-    url: string; // Object URL
-};
-
-
 const CarFormModal: React.FC<CarFormModalProps> = ({ isOpen, onClose, onSave, car }) => {
-  const [formData, setFormData] = useState({
-    title: '',
-    make: '',
-    model: '',
-    year: new Date().getFullYear(),
-    seats: 5,
-    fuelType: 'Petrol' as FuelType,
-    transmission: 'Manual' as GearType,
-    pricePerDay: 1000,
-    verified: false,
-    status: 'draft' as 'active' | 'published' | 'draft' | 'maintenance',
-    booking_status: 'available' as 'available' | 'booked',
+  const [formData, setFormData] = useState<CarFormData>({
+    title: '', make: '', model: '', year: new Date().getFullYear(),
+    seats: 5, fuelType: 'Petrol', transmission: 'Manual', pricePerDay: 1000,
+    verified: false, status: 'draft', booking_status: 'available',
   });
 
   const [images, setImages] = useState<ImageState[]>([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { addToast } = useToast();
 
   const isEditMode = car !== null;
 
@@ -58,16 +38,15 @@ const CarFormModal: React.FC<CarFormModalProps> = ({ isOpen, onClose, onSave, ca
       booking_status: car?.booking_status || 'available',
     });
     
+    // Fix: Use a const assertion on the 'type' property. This prevents TypeScript from widening
+    // the literal 'existing' to the general type 'string', ensuring the object correctly
+    // matches the discriminated union 'ImageState'.
     const initialImages: ImageState[] = (car?.imagePaths || []).map((path, i) => ({
-        // FIX: Explicitly cast 'type' to the literal 'existing' to prevent TypeScript
-        // from widening it to 'string', which would cause a type mismatch with ImageState.
-        type: 'existing' as 'existing',
+        type: 'existing' as const,
         path: path,
         url: car?.images[i] || '',
-    })).filter(img => img.url); // Ensure we have a URL
+    })).filter(img => img.url);
     setImages(initialImages);
-
-    setError(null);
     setLoading(false);
   }, [car]);
 
@@ -103,8 +82,6 @@ const CarFormModal: React.FC<CarFormModalProps> = ({ isOpen, onClose, onSave, ca
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
       const files = Array.from(e.target.files);
-      // Fix: Explicitly type `file` as `File` to resolve type inference issues.
-      // This was causing `file` to be treated as `unknown` or `{}`, leading to type errors.
       const newImageStates: ImageState[] = files.map((file: File) => ({
         type: 'new',
         file: file,
@@ -125,68 +102,15 @@ const CarFormModal: React.FC<CarFormModalProps> = ({ isOpen, onClose, onSave, ca
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    setError(null);
 
-    try {
-      // 1. Determine which images to delete from storage
-      const initialPaths = car?.imagePaths || [];
-      const finalExistingPaths = images
-        .filter((img): img is Extract<ImageState, { type: 'existing' }> => img.type === 'existing')
-        .map(img => img.path);
-      const pathsToDelete = initialPaths.filter(path => !finalExistingPaths.includes(path));
+    const result = await upsertCar(formData, images, car);
 
-      if (pathsToDelete.length > 0) {
-        const { error: deleteError } = await supabase.storage.from('cars-photos').remove(pathsToDelete);
-        if (deleteError) throw new Error(`Failed to delete images: ${deleteError.message}`);
-      }
-
-      // 2. Upload new images to storage
-      const newFilesToUpload = images.filter((img): img is Extract<ImageState, { type: 'new' }> => img.type === 'new');
-      const uploadedImagePaths: string[] = [];
-      for (const img of newFilesToUpload) {
-        const fileName = `${crypto.randomUUID()}-${img.file.name}`;
-        const { data, error: uploadError } = await supabase.storage
-          .from('cars-photos')
-          .upload(fileName, img.file);
-
-        if (uploadError) throw new Error(`Image upload failed: ${uploadError.message}`);
-        if (data) uploadedImagePaths.push(data.path);
-      }
-
-      // 3. Prepare final list of image paths for the DB
-      const finalImagePaths = [...finalExistingPaths, ...uploadedImagePaths];
-      
-      // 4. Prepare data for DB insert/update (snake_case)
-      const carData = {
-        title: formData.title,
-        make: formData.make,
-        model: formData.model,
-        year: formData.year,
-        seats: formData.seats,
-        fuel_type: formData.fuelType,
-        transmission: formData.transmission,
-        price_per_day: formData.pricePerDay,
-        image_paths: finalImagePaths,
-        verified: formData.verified,
-        status: formData.status,
-        booking_status: formData.booking_status,
-      };
-
-      // 5. Upsert data into the database
-      if (isEditMode) {
-        const { error: updateError } = await supabase.from('cars').update(carData).eq('id', car.id);
-        if (updateError) throw new Error(`Failed to update car: ${updateError.message}`);
-      } else {
-        const { error: insertError } = await supabase.from('cars').insert([carData]);
-        if (insertError) throw new Error(`Failed to add car: ${insertError.message}`);
-      }
-
-      onSave();
-    } catch (err: any) {
-      setError(err.message);
-      console.error(err);
-    } finally {
+    if (result.error) {
+      addToast(result.error, 'error');
       setLoading(false);
+    } else {
+      addToast(isEditMode ? 'Car updated successfully!' : 'Car added successfully!', 'success');
+      onSave();
     }
   };
 
@@ -207,7 +131,6 @@ const CarFormModal: React.FC<CarFormModalProps> = ({ isOpen, onClose, onSave, ca
         
         <form onSubmit={handleSubmit} className="flex-grow overflow-y-auto">
           <div className="p-6 space-y-4">
-            {error && <p className="bg-red-100 text-red-700 p-3 rounded-md text-sm">{error}</p>}
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>

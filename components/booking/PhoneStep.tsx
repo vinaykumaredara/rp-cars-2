@@ -1,19 +1,17 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
-import { supabase } from '../../lib/supabaseClient';
-import type { Car, BookingDraft, PhoneData, UserStatus } from '../../types';
+import { fetchUserProfile, updateUserPhone } from '../../lib/userService';
+import type { BookingDraft } from '../../types';
 
 interface PhoneStepProps {
-  car: Car;
   bookingData: BookingDraft;
   updateBookingData: (updates: Partial<BookingDraft>) => void;
   nextStep: () => void;
-  prevStep: () => void;
   isAuthenticatedAndPhoneVerified: boolean;
 }
 
 const PhoneStep: React.FC<PhoneStepProps> = ({ 
-  car, bookingData, updateBookingData, nextStep, prevStep, isAuthenticatedAndPhoneVerified
+  bookingData, updateBookingData, nextStep, isAuthenticatedAndPhoneVerified
 }) => {
   const { user } = useAuth();
   const [phoneNumber, setPhoneNumber] = useState(bookingData.phoneData?.phone || '');
@@ -21,30 +19,26 @@ const PhoneStep: React.FC<PhoneStepProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [initialPhoneLoaded, setInitialPhoneLoaded] = useState(false);
 
-  useEffect(() => {
-    const fetchUserPhone = async () => {
-      if (user && !initialPhoneLoaded) {
-        setIsLoading(true);
-        const { data: profile, error: profileError } = await supabase
-          .from('profiles')
-          .select('phone, status')
-          .eq('id', user.id)
-          .maybeSingle(); // Changed from .single() to avoid error if profile doesn't exist
+  const fetchUserPhone = useCallback(async () => {
+    if (user && !initialPhoneLoaded) {
+      setIsLoading(true);
+      const { profile, error: fetchError } = await fetchUserProfile(user.id);
 
-        if (profileError) {
-          console.error('Error fetching phone in PhoneStep:', profileError);
-          setError('Failed to load user phone number.');
-        } else if (profile && profile.phone && profile.status === 'active') {
-          setPhoneNumber(profile.phone);
-          updateBookingData({ phoneData: { phone: profile.phone } });
-          nextStep(); // Automatically proceed if phone is already set and active
-        }
-        setInitialPhoneLoaded(true);
-        setIsLoading(false);
+      if (fetchError) {
+        setError('Failed to load user phone number.');
+      } else if (profile && profile.phone && profile.status === 'active') {
+        setPhoneNumber(profile.phone);
+        updateBookingData({ phoneData: { phone: profile.phone } });
+        nextStep();
       }
-    };
-    fetchUserPhone();
+      setInitialPhoneLoaded(true);
+      setIsLoading(false);
+    }
   }, [user, initialPhoneLoaded, updateBookingData, nextStep]);
+
+  useEffect(() => {
+    fetchUserPhone();
+  }, [fetchUserPhone]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -52,7 +46,7 @@ const PhoneStep: React.FC<PhoneStepProps> = ({
       setError('You must be logged in to verify your phone number.');
       return;
     }
-    if (!phoneNumber || phoneNumber.length < 10) { // Basic validation
+    if (!phoneNumber || phoneNumber.length < 10) {
       setError('Please enter a valid phone number (at least 10 digits).');
       return;
     }
@@ -60,35 +54,25 @@ const PhoneStep: React.FC<PhoneStepProps> = ({
     setIsLoading(true);
     setError(null);
 
-    // Use upsert to create a profile if it doesn't exist, or update it if it does.
-    const { error: upsertError } = await supabase
-      .from('profiles')
-      .upsert({ id: user.id, phone: phoneNumber, status: 'active' as UserStatus, updated_at: new Date().toISOString() }, { onConflict: 'id' });
+    const { error: updateError } = await updateUserPhone(user.id, phoneNumber);
 
-    if (upsertError) {
-      console.error('Error updating phone number:', upsertError);
-      setError('Failed to save phone number. Please try again.');
+    if (updateError) {
+      setError(updateError);
     } else {
       updateBookingData({ phoneData: { phone: phoneNumber } });
-      nextStep(); // Proceed to the next step
+      nextStep();
     }
     setIsLoading(false);
   };
 
-  if (isLoading) {
+  if (isLoading && !initialPhoneLoaded) {
     return <div className="text-center py-8 text-gray-600">Checking phone verification...</div>;
   }
-
-  // If phone is already verified and we've landed here, this should ideally be skipped by useBooking.
-  // This fallback ensures we don't get stuck.
+  
   if (isAuthenticatedAndPhoneVerified && initialPhoneLoaded) {
-    return (
-        <div className="text-center py-8">
-            <svg className="w-16 h-16 mx-auto text-green-500 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-            <h3 className="text-xl font-bold text-foreground">Phone Verified!</h3>
-            <p className="text-gray-600 mt-2">Redirecting to next step...</p>
-        </div>
-    )
+    // This case is handled by useBooking hook auto-advancing the step.
+    // This UI is a fallback in case of race conditions.
+    return <div className="text-center py-8 text-gray-600">Phone verified, proceeding...</div>
   }
 
   return (
@@ -101,7 +85,7 @@ const PhoneStep: React.FC<PhoneStepProps> = ({
         <div>
           <label htmlFor="phoneNumber" className="block text-sm font-medium text-gray-700 mb-1">Phone Number</label>
           <input
-            type="tel" // Use type="tel" for phone numbers
+            type="tel"
             id="phoneNumber"
             value={phoneNumber}
             onChange={(e) => setPhoneNumber(e.target.value)}

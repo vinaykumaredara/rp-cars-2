@@ -35,10 +35,11 @@ const BookingManagement: React.FC = () => {
       return <p className="text-center text-gray-600 p-8">Loading bookings...</p>;
     }
     if (error) {
+      const errorMessage = typeof error === 'string' ? error : 'An unexpected error occurred. Please check the console.';
       return (
         <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4" role="alert">
           <p className="font-bold">Error loading bookings</p>
-          <p>{error}</p>
+          <p>{errorMessage}</p>
         </div>
       );
     }

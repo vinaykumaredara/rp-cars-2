@@ -1,12 +1,11 @@
-
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabaseClient';
-import { fetchCarsFromDB } from '../lib/carService'; // Import the new service
+import { fetchCarsFromDB, deleteCar } from '../lib/carService';
 import type { Car } from '../types';
 import CarFormModal from './CarFormModal';
 import ConfirmationModal from './ConfirmationModal';
 import AdminPageLayout from './AdminPageLayout';
+import { useToast } from '../contexts/ToastContext';
 
 const CarManagement: React.FC = () => {
   const [cars, setCars] = useState<Car[]>([]);
@@ -15,23 +14,22 @@ const CarManagement: React.FC = () => {
   
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedCar, setSelectedCar] = useState<Car | null>(null);
-  const [deletingCarId, setDeletingCarId] = useState<string | null>(null);
-
-  // State for confirmation modal
+  
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
   const [carToDelete, setCarToDelete] = useState<Car | null>(null);
-
+  const [isProcessing, setIsProcessing] = useState(false);
+  const { addToast } = useToast();
 
   const refreshCars = useCallback(async () => {
+    setIsLoading(true);
     const { cars, error } = await fetchCarsFromDB();
     setCars(cars);
     setError(error);
+    setIsLoading(false);
   }, []);
 
   useEffect(() => {
-    // This effect handles the initial data load and sets up the real-time subscription.
-    setIsLoading(true);
-    refreshCars().finally(() => setIsLoading(false));
+    refreshCars();
 
     const channel = supabase
       .channel('car-management-realtime')
@@ -39,12 +37,11 @@ const CarManagement: React.FC = () => {
         'postgres_changes',
         { event: '*', schema: 'public', table: 'cars' },
         () => {
-          refreshCars(); // Refresh data on any change
+          refreshCars();
         }
       )
       .subscribe();
 
-    // Cleanup function to remove the channel subscription when the component unmounts.
     return () => {
       supabase.removeChannel(channel);
     };
@@ -60,51 +57,29 @@ const CarManagement: React.FC = () => {
     setIsModalOpen(true);
   };
 
-  const handleDeleteCar = (carToDelete: Car) => {
-    setCarToDelete(carToDelete);
+  const handleDeleteCar = (car: Car) => {
+    setCarToDelete(car);
     setIsConfirmModalOpen(true);
   };
 
   const confirmDelete = async () => {
     if (!carToDelete) return;
-
-    setDeletingCarId(carToDelete.id);
-    setError(null); // Clear previous errors on a new attempt
-
-    try {
-        // 1. Delete images from storage
-        if (carToDelete.imagePaths && carToDelete.imagePaths.length > 0) {
-            const pathsToDelete = carToDelete.imagePaths.filter(p => typeof p === 'string' && p.trim() !== '');
-            if (pathsToDelete.length > 0) {
-                const { error: storageError } = await supabase.storage.from('cars-photos').remove(pathsToDelete);
-                if (storageError) {
-                    // Throw to be caught by the catch block
-                    throw new Error(`Failed to delete car images. Please try again. Details: ${storageError.message}`);
-                }
-            }
-        }
-        
-        // 2. Delete the car record from the database
-        const { error: dbError } = await supabase.from('cars').delete().eq('id', carToDelete.id);
-
-        if (dbError) {
-            // Throw to be caught by the catch block
-            throw new Error(`Failed to delete the car. Please try again. Details: ${dbError.message}`);
-        }
-        // On success, real-time will update the list.
-    } catch (err: any) {
-        console.error('Deletion error:', err);
-        setError(err.message || 'An unexpected error occurred during deletion.');
-    } finally {
-        setDeletingCarId(null);
-        setIsConfirmModalOpen(false);
-        setCarToDelete(null);
+    setIsProcessing(true);
+    
+    const { error } = await deleteCar(carToDelete);
+    if (error) {
+      addToast(error, 'error');
+    } else {
+      addToast('Car deleted successfully!', 'success');
     }
+    
+    setIsProcessing(false);
+    setIsConfirmModalOpen(false);
+    setCarToDelete(null);
   };
   
   const handleSave = () => {
     setIsModalOpen(false);
-    // No need to manually refresh; the real-time listener will handle it.
   };
   
   const handleCloseModal = () => {
@@ -120,7 +95,7 @@ const CarManagement: React.FC = () => {
         headerAction={
           <button
               onClick={handleAddNewCar}
-              disabled={deletingCarId !== null}
+              disabled={isProcessing}
               className="px-4 py-2 bg-primary text-white font-semibold rounded-lg shadow-md hover:bg-primary-hover transition disabled:opacity-50 disabled:cursor-not-allowed"
           >
               + Add New Car
@@ -144,17 +119,17 @@ const CarManagement: React.FC = () => {
                                 <div className="mt-4 flex items-center space-x-4">
                                     <button
                                         onClick={() => handleEditCar(car)}
-                                        disabled={deletingCarId !== null}
+                                        disabled={isProcessing}
                                         className="px-3 py-1 text-sm bg-blue-100 text-blue-700 rounded hover:bg-blue-200 transition disabled:bg-gray-200 disabled:cursor-not-allowed"
                                     >
                                         Edit
                                     </button>
                                     <button
                                         onClick={() => handleDeleteCar(car)}
-                                        disabled={deletingCarId !== null}
+                                        disabled={isProcessing}
                                         className="px-3 py-1 text-sm bg-red-100 text-red-700 rounded hover:bg-red-200 transition disabled:bg-gray-200 disabled:cursor-not-allowed"
                                     >
-                                        {deletingCarId === car.id ? 'Deleting...' : 'Delete'}
+                                        Delete
                                     </button>
                                 </div>
                             </div>
@@ -196,11 +171,11 @@ const CarManagement: React.FC = () => {
               <>
                 <p>Are you sure you want to permanently delete the car:</p>
                 <p className="font-semibold text-foreground mt-2">"{carToDelete.title}"?</p>
-                <p className="mt-2 text-xs text-gray-500">This action cannot be undone.</p>
+                <p className="mt-2 text-xs text-gray-500">This action includes deleting all associated images and cannot be undone.</p>
               </>
             }
             confirmText="Delete Car"
-            isConfirming={deletingCarId === carToDelete.id}
+            isConfirming={isProcessing}
         />
       )}
     </>

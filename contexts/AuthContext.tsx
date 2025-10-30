@@ -98,8 +98,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return supabase.auth.signOut();
     },
     signInWithGoogle: (): Promise<OAuthResponse> => {
+        // IMPORTANT FOR PRODUCTION DEPLOYMENT:
+        // For Google OAuth to redirect back to your app correctly, you must configure
+        // the "Site URL" in your Supabase project's Authentication settings.
+        // Go to: Supabase Dashboard > Authentication > Settings > Site URL
+        // Set this to your production domain (e.g., https://www.your-app.com).
+        // You may also need to add your domain to the "Redirect URIs" in the Google Cloud Console.
         return supabase.auth.signInWithOAuth({
           provider: 'google',
+          options: {
+            // By removing `redirectTo`, Supabase will default to the Site URL configured in your dashboard.
+            // This is more robust and prevents potential mismatches with `window.location.origin`.
+            skipBrowserRedirect: true,
+          },
         });
     },
   };

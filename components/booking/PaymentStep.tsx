@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
-import type { Car, BookingDraft, DatesData, ExtrasData } from '../../types';
-import { supabase } from '../../lib/supabaseClient';
+import { createBooking } from '../../lib/bookingService';
+import type { Car, BookingDraft } from '../../types';
 import { useAuth } from '../../contexts/AuthContext';
 
 interface PaymentStepProps {
@@ -17,86 +17,50 @@ const PaymentStep: React.FC<PaymentStepProps> = ({ car, bookingData, updateBooki
   const [paymentProcessing, setPaymentProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Derive total amounts based on bookingData
-  const numberOfDays = useMemo(() => {
-    if (!datesData) return 0;
-    const { pickupDate, pickupTime, returnDate, returnTime } = datesData;
-    const start = new Date(`${pickupDate}T${pickupTime}`);
-    const end = new Date(`${returnDate}T${returnTime}`);
-    if (isNaN(start.getTime()) || isNaN(end.getTime()) || end <= start) return 0;
-    const diffMs = end.getTime() - start.getTime();
-    return Math.max(Math.ceil(diffMs / (1000 * 60 * 60 * 24)), 1);
-  }, [datesData]);
+  const { totalAmount, amountToPay, paymentMode, numberOfDays, baseRentalPrice, selectedExtrasPrice, serviceCharge } = useMemo(() => {
+    // Fix: Use a const assertion on 'paymentMode'. This prevents TypeScript from widening the literal 'full'
+    // to the general type 'string', ensuring the inferred type for 'paymentMode' remains '"full" | "hold"'.
+    if (!datesData || !extrasData) return { totalAmount: 0, amountToPay: 0, paymentMode: 'full' as const, numberOfDays: 0, baseRentalPrice: 0, selectedExtrasPrice: 0, serviceCharge: 0 };
+    
+    const start = new Date(`${datesData.pickupDate}T${datesData.pickupTime}`);
+    const end = new Date(`${datesData.returnDate}T${datesData.returnTime}`);
+    const days = Math.max(Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)), 1);
+    
+    const basePrice = car.pricePerDay * days;
+    const extrasPrice = extrasData.extras.reduce((sum, extra) => sum + (extra.selected ? extra.pricePerDay * days : 0), 0);
+    const service = (basePrice + extrasPrice) * 0.05;
+    const total = basePrice + extrasPrice + service;
+    // FIX: Explicitly type `mode` to prevent TypeScript from widening its type to a generic `string`
+    // within the useMemo hook, ensuring it matches the expected '"full" | "hold"' type.
+    const mode: 'full' | 'hold' = extrasData.advancePaymentOptionSelected ? 'hold' : 'full';
+    const amount = mode === 'hold' ? total * 0.10 : total;
 
-  const baseRentalPrice = car ? numberOfDays * car.pricePerDay : 0;
-  const selectedExtrasPrice = useMemo(() => {
-    return (extrasData?.extras || []).reduce((sum, extra) => sum + (extra.selected ? extra.pricePerDay * numberOfDays : 0), 0);
-  }, [extrasData, numberOfDays]);
-
-  const serviceChargeRate = 0.05; // 5%
-  const serviceCharge = (baseRentalPrice + selectedExtrasPrice) * serviceChargeRate;
-  
-  const totalAmount = baseRentalPrice + selectedExtrasPrice + serviceCharge;
-  const advanceAmount = totalAmount * 0.10; // 10% for advance booking
-
-  const paymentMode = extrasData?.advancePaymentOptionSelected ? 'hold' : 'full';
-  const amountToPay = paymentMode === 'hold' ? advanceAmount : totalAmount;
+    return { totalAmount: total, amountToPay: amount, paymentMode: mode, numberOfDays: days, baseRentalPrice: basePrice, selectedExtrasPrice: extrasPrice, serviceCharge: service };
+  }, [car, datesData, extrasData]);
 
   const handleProcessPayment = async () => {
-    if (!user || !car || !datesData) {
-      setError('Missing booking details. Please go back and fill all required information.');
+    if (!user) {
+      setError('You must be signed in to complete the booking.');
       return;
     }
-
     setPaymentProcessing(true);
     setError(null);
 
-    try {
-      // Simulate API call for payment gateway interaction
-      await new Promise(resolve => setTimeout(resolve, 1500)); 
+    // Simulate calling the payment gateway and then creating the booking
+    await new Promise(resolve => setTimeout(resolve, 1500)); 
 
-      console.log(`Simulating ${paymentMode} payment of ₹${amountToPay.toLocaleString()}`);
+    const { data, error: bookingError } = await createBooking(bookingData, car, user);
 
-      const startDateTime = new Date(`${datesData.pickupDate}T${datesData.pickupTime}`);
-      const endDateTime = new Date(`${datesData.returnDate}T${datesData.returnTime}`);
-
-      const bookingRecord = {
-        user_id: user.id,
-        car_id: car.id,
-        start_datetime: startDateTime.toISOString(),
-        end_datetime: endDateTime.toISOString(),
-        total_amount: totalAmount,
-        amount_paid: amountToPay,
-        payment_mode: paymentMode,
-        status: 'confirmed', // Simulating successful payment, in real app this would be 'pending' then confirmed by webhook
-        extras: extrasData?.extras.filter(e => e.selected),
-        user_phone: bookingData.phoneData?.phone
-      };
-
-      const { data, error: insertError } = await supabase
-        .from('bookings')
-        .insert(bookingRecord)
-        .select()
-        .single(); // Use single() as we expect one record back
-
-      if (insertError) {
-        throw new Error(`Failed to save your booking: ${insertError.message}`);
-      }
-
-      // After successful insert, store the new booking ID and proceed
+    if (bookingError) {
+      setError(bookingError);
+    } else if (data) {
       updateBookingData({ 
-        paymentData: { paymentMode: paymentMode },
+        paymentData: { paymentMode },
         bookingId: data.id 
       });
-
-      nextStep(); // Proceed to confirmation
-      
-    } catch (err: any) {
-      console.error('Payment processing failed:', err);
-      setError(err.message || 'Payment failed. Please try again.');
-    } finally {
-      setPaymentProcessing(false);
+      nextStep();
     }
+    setPaymentProcessing(false);
   };
 
   return (

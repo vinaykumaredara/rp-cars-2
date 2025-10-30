@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 
 interface HeaderProps {
@@ -31,6 +31,43 @@ const Header: React.FC<HeaderProps> = ({ onSignInClick }) => {
     }
   };
 
+  /**
+   * Handles navigation to anchor links within the single-page application,
+   * supporting both smooth scrolling on the home page and navigation from admin pages.
+   * @param e - The mouse event from the anchor tag.
+   * @param targetId - The ID of the target element to scroll to (e.g., '#cars').
+   */
+  const handleSpaLinkClick = useCallback((e: React.MouseEvent<HTMLAnchorElement>, targetId: string) => {
+    e.preventDefault();
+
+    const isAtAdminPage = window.location.hash.startsWith('#/admin');
+
+    if (isAtAdminPage) {
+      // If on an admin page, navigate to the home page URL with the hash.
+      // App.tsx will switch the view, and the browser will handle scrolling.
+      window.location.hash = targetId;
+    } else {
+      // If already on the home page, perform a smooth scroll.
+      const element = document.querySelector(targetId);
+      if (element) {
+        element.scrollIntoView({
+          behavior: 'smooth',
+          block: 'start'
+        });
+        // The history.pushState call has been removed to prevent SecurityErrors in sandboxed environments.
+      } else {
+        // Fallback for safety, though should rarely be needed.
+        window.location.hash = targetId;
+      }
+    }
+    
+    // Close the mobile menu if it's open
+    if (isMenuOpen) {
+      setIsMenuOpen(false);
+    }
+  }, [isMenuOpen]);
+
+
   return (
     <header className="bg-white shadow-md sticky top-0 z-50">
       <div className="container mx-auto px-4 py-4 flex justify-between items-center">
@@ -38,7 +75,12 @@ const Header: React.FC<HeaderProps> = ({ onSignInClick }) => {
 
         <nav className="hidden lg:flex items-center space-x-8">
           {navLinks.map(link => (
-            <a key={link.label} href={link.href} className="text-foreground hover:text-primary transition-colors duration-300 relative group">
+            <a 
+              key={link.label} 
+              href={link.href}
+              onClick={(e) => handleSpaLinkClick(e, link.href)}
+              className="text-foreground hover:text-primary transition-colors duration-300 relative group"
+            >
               {link.label}
               <span className="absolute bottom-0 left-0 w-0 h-0.5 bg-primary transition-all duration-300 group-hover:w-full"></span>
             </a>
@@ -60,7 +102,7 @@ const Header: React.FC<HeaderProps> = ({ onSignInClick }) => {
             </>
           ) : (
             <>
-              <span className="font-semibold text-foreground">+91 12345 67890</span>
+              <span className="font-semibold text-foreground">+91 8897072640</span>
               <button onClick={onSignInClick} className="px-4 py-2 rounded-lg text-primary border border-primary hover:bg-primary hover:text-white transition-all duration-300">
                 Sign In
               </button>
@@ -90,7 +132,11 @@ const Header: React.FC<HeaderProps> = ({ onSignInClick }) => {
       <div id="mobile-menu" className={`lg:hidden ${isMenuOpen ? 'block' : 'hidden'} absolute top-full left-0 w-full bg-white shadow-lg transition-all duration-300 ease-in-out`}>
         <div className="flex flex-col items-center py-4 space-y-4">
           {navLinks.map(link => (
-            <a key={link.label} href={link.href} onClick={() => setIsMenuOpen(false)} className="text-foreground hover:text-primary transition-colors duration-300 text-lg">
+            <a 
+              key={link.label} 
+              href={link.href} 
+              onClick={(e) => handleSpaLinkClick(e, link.href)} 
+              className="text-foreground hover:text-primary transition-colors duration-300 text-lg">
               {link.label}
             </a>
           ))}
@@ -109,7 +155,7 @@ const Header: React.FC<HeaderProps> = ({ onSignInClick }) => {
             </>
           ) : (
             <>
-              <span className="font-semibold text-foreground text-lg">+91 12345 67890</span>
+              <span className="font-semibold text-foreground text-lg">+91 8897072640</span>
               <button onClick={() => { onSignInClick(); setIsMenuOpen(false); }} className="w-3/4 px-4 py-2 rounded-lg text-primary border border-primary hover:bg-primary hover:text-white transition-all duration-300">
                 Sign In
               </button>

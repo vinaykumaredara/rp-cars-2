@@ -1,4 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { useAuth } from '../../contexts/AuthContext';
+import { fetchUserLicense, uploadLicense } from '../../lib/licenseService';
 import type { Car, BookingDraft } from '../../types';
 
 interface LicenseStepProps {
@@ -9,117 +11,109 @@ interface LicenseStepProps {
   prevStep: () => void;
 }
 
-const LicenseStep: React.FC<LicenseStepProps> = ({ car, bookingData, updateBookingData, nextStep, prevStep }) => {
-  const [licenseImage, setLicenseImage] = useState<File | null>(null);
-  const [licensePreviewUrl, setLicensePreviewUrl] = useState<string | null>(null);
+const LicenseStep: React.FC<LicenseStepProps> = ({ bookingData, updateBookingData, nextStep, prevStep }) => {
+  const { user } = useAuth();
+  const [licenseFile, setLicenseFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [licenseStatus, setLicenseStatus] = useState<'needed' | 'uploaded' | 'verified'>('needed');
 
-  // TODO: In a real implementation, you'd fetch the user's existing license status
-  // and uploaded image from the `licenses` table.
-  // For now, we'll simulate a license upload.
-  const hasExistingLicense = false; // Based on actual user data later
-  const isLicenseVerified = false; // Based on `licenses.verified` field later
+  const checkLicenseStatus = useCallback(async () => {
+    if (!user) return;
+    setIsLoading(true);
+    setError(null);
+    const { license, error: fetchError } = await fetchUserLicense(user.id);
+    if (fetchError) {
+      setError('Could not verify your license status. Please try again.');
+    } else if (license) {
+      setLicenseStatus(license.verified ? 'verified' : 'uploaded');
+      updateBookingData({ licenseData: { isUploaded: true } });
+      nextStep(); // Auto-advance if already uploaded/verified
+    } else {
+      setLicenseStatus('needed');
+    }
+    setIsLoading(false);
+  }, [user, nextStep, updateBookingData]);
 
   useEffect(() => {
-    // Cleanup object URL if component unmounts or image changes
+    checkLicenseStatus();
+  }, [checkLicenseStatus]);
+
+  useEffect(() => {
+    // Cleanup preview URL on unmount
     return () => {
-      if (licensePreviewUrl) {
-        URL.revokeObjectURL(licensePreviewUrl);
+      if (previewUrl) {
+        URL.revokeObjectURL(previewUrl);
       }
     };
-  }, [licensePreviewUrl]);
+  }, [previewUrl]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
-      setLicenseImage(file);
-      if (licensePreviewUrl) {
-        URL.revokeObjectURL(licensePreviewUrl);
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) { // 5MB limit
+        setError('File size must be less than 5MB.');
+        return;
       }
-      setLicensePreviewUrl(URL.createObjectURL(file));
       setError(null);
+      setLicenseFile(file);
+      const newPreviewUrl = URL.createObjectURL(file);
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+      setPreviewUrl(newPreviewUrl);
     }
   };
 
-  const handleNext = async () => {
-    if (hasExistingLicense && isLicenseVerified) {
-      // If already verified, just proceed
-      updateBookingData({ licenseUploaded: true });
-      nextStep();
+  const handleSubmit = async () => {
+    if (!user || !licenseFile) {
+      setError('Please select a license file to upload.');
       return;
     }
-
-    if (!licenseImage) {
-      setError('Please upload an image of your driving license.');
-      return;
-    }
-
     setIsUploading(true);
     setError(null);
-    
-    try {
-      // TODO: Implement actual license upload to Supabase Storage ('license-uploads' bucket)
-      // and create a record in the `licenses` table.
-      // const { data, error: uploadError } = await supabase.storage.from('license-uploads').upload(...);
-      // const { data: dbInsert, error: dbError } = await supabase.from('licenses').insert(...);
-      
-      await new Promise(resolve => setTimeout(resolve, 1500)); // Simulate upload time
-
-      // After successful upload and DB record creation:
-      updateBookingData({ licenseUploaded: true }); // Mark as uploaded (pending verification by admin)
-      nextStep(); // Proceed to the next step
-    } catch (err: any) {
-      console.error('License upload failed:', err);
-      setError(err.message || 'Failed to upload license. Please try again.');
-    } finally {
-      setIsUploading(false);
+    const { error: uploadError } = await uploadLicense(user.id, licenseFile);
+    if (uploadError) {
+      setError(`Upload failed: ${uploadError}`);
+    } else {
+      updateBookingData({ licenseData: { file: licenseFile, previewUrl: previewUrl || undefined, isUploaded: true } });
+      nextStep();
     }
+    setIsUploading(false);
   };
+  
+  if (isLoading) {
+      return <div className="text-center p-8">Checking license status...</div>;
+  }
+  
+  if (licenseStatus === 'verified' || licenseStatus === 'uploaded') {
+      return <div className="text-center p-8">License already on file. Proceeding...</div>;
+  }
 
   return (
     <div className="space-y-6">
-      <p className="text-gray-700">
-        Please upload a clear image of your valid driving license. This is required for verification.
-      </p>
-      
+      <p className="text-gray-700">Please upload a clear photo of your valid driver's license.</p>
+
       {error && <p className="bg-red-100 text-red-700 p-3 rounded-md text-sm">{error}</p>}
 
-      {hasExistingLicense && (
-        <div className="p-3 bg-blue-100 rounded-lg text-blue-800 flex items-center">
-            <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd"></path></svg>
-            <span>You have an existing license on file.</span>
-            {isLicenseVerified ? (
-                <span className="ml-2 px-2 py-0.5 text-xs font-semibold bg-green-200 text-green-800 rounded-full">Verified</span>
-            ) : (
-                <span className="ml-2 px-2 py-0.5 text-xs font-semibold bg-yellow-200 text-yellow-800 rounded-full">Pending Verification</span>
-            )}
-        </div>
-      )}
+      <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
+        <input
+          type="file"
+          id="license-upload"
+          accept="image/png, image/jpeg, image/webp"
+          onChange={handleFileChange}
+          className="hidden"
+        />
+        <label htmlFor="license-upload" className="cursor-pointer text-primary font-semibold hover:underline">
+          {licenseFile ? 'Change file' : 'Choose a file'}
+        </label>
+        <p className="text-xs text-gray-500 mt-1">PNG, JPG, WEBP up to 5MB</p>
+      </div>
 
-      {!isLicenseVerified && ( // Allow upload if not yet verified
-        <div>
-          <label htmlFor="licenseUpload" className="block text-sm font-medium text-gray-700 mb-2">Upload License Image</label>
-          <input
-            type="file"
-            id="licenseUpload"
-            accept="image/*"
-            onChange={handleFileChange}
-            className="block w-full text-sm text-gray-500
-              file:mr-4 file:py-2 file:px-4
-              file:rounded-lg file:border-0
-              file:text-sm file:font-semibold
-              file:bg-primary file:text-white
-              hover:file:bg-primary-hover file:transition-colors
-              cursor-pointer"
-            disabled={isUploading}
-          />
-          {licensePreviewUrl && (
-            <div className="mt-4">
-              <p className="text-sm text-gray-600 mb-2">Image Preview:</p>
-              <img src={licensePreviewUrl} alt="License Preview" className="max-w-xs h-auto rounded-lg shadow-md border" />
-            </div>
-          )}
+      {previewUrl && (
+        <div className="text-center">
+          <img src={previewUrl} alt="License Preview" className="max-h-48 mx-auto rounded-lg shadow-md" />
+          <p className="text-sm text-gray-600 mt-2">{licenseFile?.name}</p>
         </div>
       )}
 
@@ -132,11 +126,11 @@ const LicenseStep: React.FC<LicenseStepProps> = ({ car, bookingData, updateBooki
           Back
         </button>
         <button
-          onClick={handleNext}
-          disabled={isUploading || (!licenseImage && !hasExistingLicense)}
+          onClick={handleSubmit}
+          disabled={!licenseFile || isUploading}
           className="px-6 py-2 rounded-lg bg-primary text-white font-semibold hover:bg-primary-hover transition disabled:bg-opacity-50"
         >
-          {isUploading ? 'Uploading...' : 'Next: Extras'}
+          {isUploading ? 'Uploading...' : 'Upload & Continue'}
         </button>
       </div>
     </div>

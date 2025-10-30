@@ -1,25 +1,42 @@
-import React from 'react';
+import React, { useCallback } from 'react';
 
 const Hero: React.FC = () => {
+  const handleBrowseClick = useCallback((e: React.MouseEvent<HTMLAnchorElement>) => {
+    e.preventDefault();
+    const targetId = e.currentTarget.getAttribute('href');
+    if (!targetId) return;
+
+    const element = document.querySelector(targetId);
+    if (element) {
+      element.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start'
+      });
+      // The history.pushState call has been removed to prevent SecurityErrors in sandboxed environments.
+    } else {
+      // Fallback for safety
+      window.location.hash = targetId;
+    }
+  }, []);
+
   return (
     <section className="bg-white">
       <div className="container mx-auto px-4 pt-16 pb-12">
-        <div className="grid lg:grid-cols-2 gap-12 items-center">
-          <div className="text-center lg:text-left">
-            <h1 className="text-4xl md:text-5xl font-bold text-foreground leading-tight mb-4">
-              Premium Car Experience
-            </h1>
-            <p className="text-lg text-gray-600 mb-8">
-              Discover our fleet of high-quality cars for a seamless and comfortable journey. Unmatched service, available 24/7.
-            </p>
-            <div className="flex justify-center lg:justify-start space-x-4">
-              <a href="#cars" className="px-8 py-3 rounded-lg bg-primary text-white font-semibold hover:bg-primary-hover transition-all duration-300 shadow-md hover:shadow-lg transform hover:-translate-y-0.5">
-                Browse Cars
-              </a>
-            </div>
-          </div>
-          <div>
-            <img src="https://picsum.photos/600/400?random=hero" alt="Luxury car" className="rounded-lg shadow-2xl w-full h-auto object-cover"/>
+        <div className="text-center">
+          <h1 className="text-4xl md:text-5xl font-bold text-foreground leading-tight mb-4">
+            Premium Car Experience
+          </h1>
+          <p className="text-lg text-gray-600 mb-8 max-w-2xl mx-auto">
+            Discover our fleet of high-quality cars for a seamless and comfortable journey. Unmatched service, available 24/7.
+          </p>
+          <div className="flex justify-center space-x-4">
+            <a 
+              href="#cars" 
+              onClick={handleBrowseClick}
+              className="px-8 py-3 rounded-lg bg-primary text-white font-semibold hover:bg-primary-hover transition-all duration-300 shadow-md hover:shadow-lg transform hover:-translate-y-0.5"
+            >
+              Browse Cars
+            </a>
           </div>
         </div>
         <div className="mt-16 bg-muted p-6 rounded-lg shadow-sm">
