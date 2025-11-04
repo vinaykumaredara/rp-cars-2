@@ -204,6 +204,22 @@ type Message = {
     content: string;
 };
 
+// Initialize the AI client once at the module level for performance.
+let ai: GoogleGenAI | null = null;
+let isAiEnabled = false;
+
+if (process.env.API_KEY) {
+    try {
+        ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+        isAiEnabled = true;
+    } catch (e) {
+        console.error("Failed to initialize Google Gemini AI:", e);
+    }
+} else {
+    console.warn("API_KEY is not configured. AI Assistant is disabled.");
+}
+
+
 const ChatBubble: React.FC<{ message: Message; }> = ({ message }) => {
   const isUser = message.role === 'user';
   return (
@@ -235,28 +251,7 @@ const AIAssistant: React.FC = () => {
     const [messages, setMessages] = useState<Message[]>([]);
     const [userInput, setUserInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
-
-    const [aiInstance, setAiInstance] = useState<GoogleGenAI | null>(null);
-    const [isAiEnabled, setIsAiEnabled] = useState(false);
-
     const chatContainerRef = useRef<HTMLDivElement>(null);
-
-    useEffect(() => {
-        const apiKey = process.env.API_KEY;
-        if (apiKey) {
-            try {
-                const ai = new GoogleGenAI({ apiKey });
-                setAiInstance(ai);
-                setIsAiEnabled(true);
-            } catch (e) {
-                console.error("Failed to initialize Google Gemini AI:", e);
-                setIsAiEnabled(false);
-            }
-        } else {
-            console.warn("API_KEY is not configured. AI Assistant is disabled.");
-            setIsAiEnabled(false);
-        }
-    }, []);
 
     useEffect(() => {
         if (chatContainerRef.current) {
@@ -266,7 +261,7 @@ const AIAssistant: React.FC = () => {
 
     const handleSendMessage = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!userInput.trim() || !aiInstance) return;
+        if (!userInput.trim() || !ai) return;
 
         const userMessage: Message = { role: 'user', content: userInput };
         setMessages(prev => [...prev, userMessage]);
@@ -274,9 +269,9 @@ const AIAssistant: React.FC = () => {
         setIsLoading(true);
 
         try {
-            const response = await aiInstance.models.generateContent({
+            const response = await ai.models.generateContent({
                 model: 'gemini-2.5-flash',
-                contents: [{ role: 'user', parts: [{ text: userInput }] }],
+                contents: userInput,
                 config: {
                     systemInstruction,
                 },
@@ -347,7 +342,7 @@ const AIAssistant: React.FC = () => {
                                 />
                                 <button
                                     type="submit"
-                                    disabled={isLoading || !aiInstance}
+                                    disabled={isLoading || !ai}
                                     className="bg-primary text-white p-3 rounded-full hover:bg-primary-hover disabled:bg-opacity-50"
                                     aria-label="Send message"
                                 >

@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { useToast } from '../contexts/ToastContext';
 import { upsertPromoCode } from '../lib/promoService';
@@ -63,7 +64,6 @@ const PromoCodeFormModal: React.FC<PromoCodeFormModalProps> = ({ isOpen, onClose
         expires_at: formData.expires_at ? new Date(formData.expires_at).toISOString() : null
     };
 
-    // @ts-ignore
     const { error } = await upsertPromoCode(dataToSave, promoCode?.id);
 
     if (error) {

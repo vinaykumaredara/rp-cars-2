@@ -44,7 +44,7 @@ const CarCard: React.FC<CarCardProps> = ({ car, onBookNow }) => {
 
   return (
     <div className="bg-white rounded-lg shadow-lg overflow-hidden flex flex-col transform hover:-translate-y-1 transition-transform duration-300 group">
-      <div className="relative">
+      <div className="relative bg-gray-200">
         {hasImages ? (
           <>
             <img 

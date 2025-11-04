@@ -14,20 +14,26 @@ const ConfirmationStep: React.FC<ConfirmationStepProps> = ({ car, bookingData, o
   // Derive total amounts based on bookingData for display
   const { datesData, extrasData } = bookingData;
 
-  const numberOfDays = useMemo(() => {
+  const billingDays = useMemo(() => {
     if (!datesData) return 0;
     const { pickupDate, pickupTime, returnDate, returnTime } = datesData;
     const start = new Date(`${pickupDate}T${pickupTime}`);
     const end = new Date(`${returnDate}T${returnTime}`);
     if (isNaN(start.getTime()) || isNaN(end.getTime()) || end <= start) return 0;
+    
     const diffMs = end.getTime() - start.getTime();
-    return Math.max(Math.ceil(diffMs / (1000 * 60 * 60 * 24)), 1);
+    const diffHours = diffMs / (1000 * 60 * 60);
+
+    if (diffHours < 12) return 0;
+
+    const billingUnits = Math.ceil(diffHours / 12);
+    return billingUnits / 2;
   }, [datesData]);
 
-  const baseRentalPrice = car ? numberOfDays * car.pricePerDay : 0;
+  const baseRentalPrice = car ? billingDays * car.pricePerDay : 0;
   const selectedExtrasPrice = useMemo(() => {
-    return (extrasData?.extras || []).reduce((sum, extra) => sum + (extra.selected ? extra.pricePerDay * numberOfDays : 0), 0);
-  }, [extrasData, numberOfDays]);
+    return (extrasData?.extras || []).reduce((sum, extra) => sum + (extra.selected ? extra.pricePerDay * billingDays : 0), 0);
+  }, [extrasData, billingDays]);
 
   const serviceChargeRate = 0.05; // 5%
   const serviceCharge = (baseRentalPrice + selectedExtrasPrice) * serviceChargeRate;

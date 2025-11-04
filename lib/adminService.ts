@@ -37,7 +37,6 @@ export const fetchDashboardStats = async (): Promise<{ stats: DashboardStats | n
 
 export const fetchAllBookings = async (): Promise<{ bookings: BookingDetail[]; error: string | null }> => {
   try {
-    // Replaced RPC with a direct query to match the user's database schema.
     const { data, error } = await supabase
       .from('bookings')
       .select(`
@@ -49,12 +48,21 @@ export const fetchAllBookings = async (): Promise<{ bookings: BookingDetail[]; e
         end_datetime,
         total_amount,
         status,
+        hold_expires_at,
         users (
           full_name,
           phone
         ),
         cars (
           title
+        ),
+        booking_extensions (
+            id,
+            added_hours,
+            requested_end,
+            price,
+            payment_status,
+            created_at
         )
       `)
       .order('created_at', { ascending: false });
@@ -64,7 +72,6 @@ export const fetchAllBookings = async (): Promise<{ bookings: BookingDetail[]; e
       return { bookings: [], error: `Failed to fetch bookings: ${error.message}` };
     }
 
-    // Map the joined data to the BookingDetail type expected by the UI.
     const formattedBookings: BookingDetail[] = (data || []).map((b: any) => ({
       id: b.id,
       created_at: b.created_at,
@@ -77,7 +84,9 @@ export const fetchAllBookings = async (): Promise<{ bookings: BookingDetail[]; e
       end_datetime: b.end_datetime,
       total_amount: b.total_amount,
       status: b.status,
-      payment_mode: null, // This field no longer exists in the booking table.
+      hold_expires_at: b.hold_expires_at,
+      payment_mode: b.status === 'hold' ? 'hold' : 'full', // Infer payment mode for UI
+      booking_extensions: b.booking_extensions || [],
     }));
 
     return { bookings: formattedBookings, error: null };

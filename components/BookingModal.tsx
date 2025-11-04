@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import type { Car } from '../types';
+import type { Car, BookingDraft } from '../types';
 import { useAuth } from '../contexts/AuthContext'; // Added import
 import { supabase } from '../lib/supabaseClient'; // Added import
 
@@ -17,9 +17,10 @@ interface BookingModalProps {
   isOpen: boolean;
   onClose: () => void;
   car: Car | null;
+  initialBookingState?: Partial<BookingDraft> | null;
 }
 
-const BookingModal: React.FC<BookingModalProps> = ({ isOpen, onClose, car }) => {
+const BookingModal: React.FC<BookingModalProps> = ({ isOpen, onClose, car, initialBookingState }) => {
   const { user } = useAuth();
   
   // Use the new booking hook
@@ -35,22 +36,8 @@ const BookingModal: React.FC<BookingModalProps> = ({ isOpen, onClose, car }) => 
     updateBookingData,
     stepsConfig,
     isAuthenticatedAndPhoneVerified,
-  } = useBooking(car);
+  } = useBooking(car, initialBookingState);
 
-  // Effect to handle initial modal state (auth check, restore draft)
-  useEffect(() => {
-    if (isOpen && car && !user && currentStep === 0) {
-      // User is not logged in, but tried to book. Save draft and redirect.
-      // The useBooking hook handles saving the draft and redirecting.
-      // This effect ensures we don't proceed until auth is handled.
-      // The redirect itself is handled within useBooking's internal logic.
-      // For now, we'll just show the sign-in modal if user is not present.
-      console.log("User not logged in, booking draft initiated (conceptually).");
-      // TODO: Implement actual draft saving & redirect logic as per PRD Step 3
-      // For now, the App.tsx handles opening sign-in modal if user is null on Book Now.
-      // If we reach here, it means App.tsx has already checked user status.
-    }
-  }, [isOpen, car, user, currentStep, goToStep]);
 
   // Handle closing the modal and resetting booking state
   const handleCloseModal = () => {

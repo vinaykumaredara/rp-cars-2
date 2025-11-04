@@ -40,7 +40,7 @@ const DatesStep: React.FC<DatesStepProps> = ({ car, bookingData, updateBookingDa
     }
   }, [bookingData.datesData, today, tomorrow, updateBookingData]);
 
-  const numberOfDays = useMemo(() => {
+  const billingDays = useMemo(() => {
     if (!pickupDate || !pickupTime || !returnDate || !returnTime) return 0;
 
     const start = new Date(`${pickupDate}T${pickupTime}`);
@@ -49,12 +49,19 @@ const DatesStep: React.FC<DatesStepProps> = ({ car, bookingData, updateBookingDa
     if (isNaN(start.getTime()) || isNaN(end.getTime()) || end <= start) return 0;
 
     const diffMs = end.getTime() - start.getTime();
-    // Calculate fractional days if needed, or round up to nearest day for billing
-    const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
-    return Math.max(diffDays, 1); // Ensure at least 1 day if dates are valid
+    const diffHours = diffMs / (1000 * 60 * 60);
+
+    if (diffHours < 12) {
+      return 0; // Will be caught by validation
+    }
+
+    // Calculate billing units based on 12-hour blocks
+    const billingUnits = Math.ceil(diffHours / 12);
+    // Each unit is 0.5 days
+    return billingUnits / 2;
   }, [pickupDate, pickupTime, returnDate, returnTime]);
   
-  const totalPrice = car ? numberOfDays * car.pricePerDay : 0;
+  const totalPrice = car ? billingDays * car.pricePerDay : 0;
 
   const handleNext = () => {
     // Basic validation
@@ -75,6 +82,14 @@ const DatesStep: React.FC<DatesStepProps> = ({ car, bookingData, updateBookingDa
       setError('Return date and time must be after pickup date and time.');
       return;
     }
+    
+    const diffMs = returnDateTime.getTime() - startDateTime.getTime();
+    const diffHours = diffMs / (1000 * 60 * 60);
+    if (diffHours < 12) {
+      setError('Minimum booking duration is 12 hours.');
+      return;
+    }
+
 
     setError(null);
     updateBookingData({
@@ -150,7 +165,7 @@ const DatesStep: React.FC<DatesStepProps> = ({ car, bookingData, updateBookingDa
             {totalPrice > 0 ? `₹${totalPrice.toLocaleString()}` : 'Select dates'}
           </span>
         </div>
-        {numberOfDays > 0 && <p className="text-sm text-gray-600 text-right mt-1">For {numberOfDays} day{numberOfDays > 1 && 's'}</p>}
+        {billingDays > 0 && <p className="text-sm text-gray-600 text-right mt-1">For {billingDays} billing day(s)</p>}
       </div>
 
       <div className="flex justify-between space-x-4 pt-4">

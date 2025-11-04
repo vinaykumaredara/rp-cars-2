@@ -7,18 +7,32 @@ interface FetchCarsOptions {
   searchTerm?: string;
   seatFilter?: number | 'all';
   fuelFilter?: FuelType[];
+  startDate?: string;
+  endDate?: string;
 }
 
 /**
- * Fetches cars from the database, with optional pagination and filtering.
+ * Fetches cars from the database, with optional pagination and availability filtering.
  */
 export const fetchCarsFromDB = async (options: FetchCarsOptions = {}): Promise<{ cars: Car[]; error: string | null; count: number | null }> => {
     try {
-        const { page, limit, searchTerm, seatFilter, fuelFilter } = options;
+        const { page, limit, searchTerm, seatFilter, fuelFilter, startDate, endDate } = options;
+
+        let availableCarIds: string[] | null = null;
+
+        // If a date range is provided, first get the IDs of available cars.
+        if (startDate && endDate) {
+            const { data: carIdsData, error: availabilityError } = await supabase.rpc('get_available_cars', {
+                start_ts: new Date(startDate).toISOString(),
+                end_ts: new Date(endDate).toISOString(),
+            });
+            if (availabilityError) throw availabilityError;
+            availableCarIds = carIdsData || [];
+        }
 
         let query = supabase
             .from('cars')
-            .select('*', { count: 'planned' })
+            .select('*', { count: 'exact' }) // Use 'exact' for accurate pagination with filters
             .eq('status', 'published');
         
         if (searchTerm) {
@@ -30,6 +44,15 @@ export const fetchCarsFromDB = async (options: FetchCarsOptions = {}): Promise<{
         if (fuelFilter && fuelFilter.length > 0) {
             query = query.in('fuel_type', fuelFilter);
         }
+        // If we have a list of available car IDs, filter the main query by them.
+        if (availableCarIds !== null) {
+            if (availableCarIds.length === 0) {
+                // No cars are available, so we can return early.
+                return { cars: [], error: null, count: 0 };
+            }
+            query = query.in('id', availableCarIds);
+        }
+
         if (page && limit) {
             const from = (page - 1) * limit;
             const to = page * limit - 1;
@@ -40,9 +63,7 @@ export const fetchCarsFromDB = async (options: FetchCarsOptions = {}): Promise<{
             .order('year', { ascending: false })
             .order('title', { ascending: true });
 
-        if (error) {
-            throw error;
-        }
+        if (error) throw error;
 
         if (data) {
             const formattedData: Car[] = data.map(car => {
@@ -53,6 +74,11 @@ export const fetchCarsFromDB = async (options: FetchCarsOptions = {}): Promise<{
                     const { data: { publicUrl } } = supabase.storage.from('cars-photos').getPublicUrl(path);
                     return publicUrl;
                 });
+                
+                // If a date filter is applied, respect the car's static 'available' flag.
+                // The list of cars has already been filtered for dynamic availability.
+                // If no date filter is applied, show all published cars as available for browsing.
+                const isDateFiltered = availableCarIds !== null;
 
                 return {
                     id: car.id,
@@ -66,10 +92,9 @@ export const fetchCarsFromDB = async (options: FetchCarsOptions = {}): Promise<{
                     pricePerDay: car.price_per_day,
                     images: imageUrls,
                     imagePaths: imagePaths,
-                    available: car.booking_status === 'available',
+                    available: isDateFiltered ? car.available : true,
                     verified: car.verified,
                     status: car.status,
-                    booking_status: car.booking_status
                 };
             });
             return { cars: formattedData, error: null, count };
@@ -80,6 +105,24 @@ export const fetchCarsFromDB = async (options: FetchCarsOptions = {}): Promise<{
         console.error('Error fetching cars:', err);
         const errorMessage = err.message || 'An unexpected error occurred while fetching car data.';
         return { cars: [], error: `Failed to fetch car data: ${errorMessage}`, count: 0 };
+    }
+};
+
+/**
+ * Updates a car's static availability status.
+ */
+export const updateCarAvailability = async (carId: string, available: boolean): Promise<{ error: string | null }> => {
+    try {
+        const { error } = await supabase
+            .from('cars')
+            .update({ available })
+            .eq('id', carId);
+
+        if (error) throw error;
+        return { error: null };
+    } catch (err: any) {
+        console.error('Error updating car availability:', err);
+        return { error: err.message || 'An unexpected error occurred.' };
     }
 };
 
@@ -115,7 +158,7 @@ export const upsertCar = async (formData: CarFormData, images: ImageState[], exi
             title: formData.title, make: formData.make, model: formData.model, year: formData.year,
             seats: formData.seats, fuel_type: formData.fuelType, transmission: formData.transmission,
             price_per_day: formData.pricePerDay, image_paths: finalImagePaths, verified: formData.verified,
-            status: formData.status, booking_status: formData.booking_status,
+            status: formData.status,
         };
 
         if (existingCar) {

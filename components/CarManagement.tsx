@@ -1,11 +1,30 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabaseClient';
-import { fetchCarsFromDB, deleteCar } from '../lib/carService';
+import { fetchCarsFromDB, deleteCar, updateCarAvailability } from '../lib/carService';
 import type { Car } from '../types';
 import CarFormModal from './CarFormModal';
 import ConfirmationModal from './ConfirmationModal';
 import AdminPageLayout from './AdminPageLayout';
 import { useToast } from '../contexts/ToastContext';
+
+const ToggleSwitch: React.FC<{
+  checked: boolean;
+  onChange: () => void;
+  disabled?: boolean;
+}> = ({ checked, onChange, disabled }) => {
+  return (
+    <label className="inline-flex items-center cursor-pointer">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={onChange}
+        disabled={disabled}
+        className="sr-only peer"
+      />
+      <div className={`relative w-11 h-6 bg-gray-200 rounded-full peer peer-focus:ring-4 peer-focus:ring-blue-300 ${disabled ? 'opacity-50 cursor-not-allowed' : ''} peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary`}></div>
+    </label>
+  );
+};
 
 const CarManagement: React.FC = () => {
   const [cars, setCars] = useState<Car[]>([]);
@@ -18,6 +37,7 @@ const CarManagement: React.FC = () => {
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
   const [carToDelete, setCarToDelete] = useState<Car | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [processingToggleId, setProcessingToggleId] = useState<string | null>(null);
   const { addToast } = useToast();
 
   const refreshCars = useCallback(async () => {
@@ -78,6 +98,19 @@ const CarManagement: React.FC = () => {
     setCarToDelete(null);
   };
   
+  const handleToggleAvailability = async (car: Car) => {
+    setProcessingToggleId(car.id);
+    const newAvailability = !car.available;
+    const { error } = await updateCarAvailability(car.id, newAvailability);
+
+    if (error) {
+      addToast(`Failed to update status: ${error}`, 'error');
+    } else {
+      addToast(`Car is now ${newAvailability ? 'available' : 'unavailable'}`, 'success');
+    }
+    setProcessingToggleId(null);
+  };
+
   const handleSave = () => {
     setIsModalOpen(false);
   };
@@ -116,7 +149,7 @@ const CarManagement: React.FC = () => {
                             <div className="w-full md:w-1/3">
                                 <h3 className="text-lg font-bold">{car.title} ({car.year})</h3>
                                 <p className="text-sm text-gray-500">Price: ₹{car.pricePerDay}/day</p>
-                                <div className="mt-4 flex items-center space-x-4">
+                                <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2">
                                     <button
                                         onClick={() => handleEditCar(car)}
                                         disabled={isProcessing}
@@ -131,6 +164,16 @@ const CarManagement: React.FC = () => {
                                     >
                                         Delete
                                     </button>
+                                    <div className="flex items-center space-x-2">
+                                        <ToggleSwitch
+                                            checked={car.available}
+                                            onChange={() => handleToggleAvailability(car)}
+                                            disabled={isProcessing || processingToggleId === car.id}
+                                        />
+                                        <span className={`text-sm font-medium ${car.available ? 'text-green-600' : 'text-gray-500'}`}>
+                                            {processingToggleId === car.id ? 'Updating...' : (car.available ? 'Available' : 'Unavailable')}
+                                        </span>
+                                    </div>
                                 </div>
                             </div>
                             <div className="w-full md:w-2/3">

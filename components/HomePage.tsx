@@ -11,15 +11,21 @@ import Footer from './Footer';
 import Modal from './Modal';
 import { fetchCarsFromDB } from '../lib/carService';
 import { useDebounce } from '../lib/useDebounce';
-import type { Car, FuelType } from '../types';
+import type { Car, FuelType, BookingDraft } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import CarCardSkeleton from './CarCardSkeleton';
+import { supabase } from '../lib/supabaseClient';
 
 const CARS_PER_PAGE = 9;
 
 // Lazy-load heavy components
 const BookingModal = lazy(() => import('./BookingModal'));
 const AIAssistant = lazy(() => import('./AIAssistant'));
+
+interface PostPaymentInfo {
+    bookingId: string;
+    carId: string;
+}
 
 const HomePage: React.FC = () => {
     // State for cars & pagination
@@ -38,50 +44,102 @@ const HomePage: React.FC = () => {
     const [isBookingModalOpen, setIsBookingModalOpen] = useState(false);
     const [selectedCar, setSelectedCar] = useState<Car | null>(null);
     const [carToBookAfterLogin, setCarToBookAfterLogin] = useState<Car | null>(null);
+    const [initialBookingState, setInitialBookingState] = useState<Partial<BookingDraft> | null>(null);
     
     // State for filters
     const [searchTerm, setSearchTerm] = useState('');
     const [seatFilter, setSeatFilter] = useState<number | 'all'>('all');
     const [fuelFilter, setFuelFilter] = useState<FuelType[]>([]);
+    const [pickupDate, setPickupDate] = useState('');
+    const [returnDate, setReturnDate] = useState('');
     
-    const debouncedSearchTerm = useDebounce(searchTerm, 500); // 500ms delay for search
+    const debouncedSearchTerm = useDebounce(searchTerm, 500);
     
     const { user } = useAuth();
 
-    // Fetch car data when debounced filters change
+    const handleSearch = useCallback(async () => {
+        setIsLoadingCars(true);
+        setCarsError(null);
+        
+        const { cars: newCars, error, count } = await fetchCarsFromDB({ 
+            page: 1, 
+            limit: CARS_PER_PAGE,
+            searchTerm: debouncedSearchTerm,
+            seatFilter,
+            fuelFilter,
+            startDate: pickupDate,
+            endDate: returnDate
+        });
+        
+        setCars(newCars);
+        setCurrentPage(1);
+        setCarsError(error);
+        setHasMoreCars(count ? newCars.length < count : false);
+        setIsLoadingCars(false);
+    }, [debouncedSearchTerm, seatFilter, fuelFilter, pickupDate, returnDate]);
+
+    // Initial load and real-time subscription
     useEffect(() => {
-        const loadFilteredCars = async () => {
-            setIsLoadingCars(true);
-            setCarsError(null);
-            
-            const { cars: newCars, error, count } = await fetchCarsFromDB({ 
-                page: 1, 
-                limit: CARS_PER_PAGE,
-                searchTerm: debouncedSearchTerm,
-                seatFilter,
-                fuelFilter,
-            });
-            
-            setCars(newCars);
-            setCurrentPage(1); // Reset to page 1 for new filter results
-            setCarsError(error);
-            setHasMoreCars(count ? newCars.length < count : false);
-            setIsLoadingCars(false);
+        handleSearch(); // Triggered on initial load and any filter change
+
+        const channel = supabase
+          .channel('bookings-realtime')
+          .on(
+            'postgres_changes',
+            { event: '*', schema: 'public', table: 'bookings' },
+            (payload) => {
+              console.log('Real-time booking change detected, refreshing availability.', payload);
+              handleSearch(); // Re-run search with current filters to get latest availability
+            }
+          )
+          .subscribe();
+
+        return () => {
+          supabase.removeChannel(channel);
         };
-        loadFilteredCars();
-    }, [debouncedSearchTerm, seatFilter, fuelFilter]);
+    }, [handleSearch]);
     
     // Effect to trigger booking modal after a user logs in.
     useEffect(() => {
-        // If the user has just logged in and we have a car pending booking
         if (user && carToBookAfterLogin) {
-            // Open the booking modal for the intended car
-            setSelectedCar(carToBookAfterLogin);
-            setIsBookingModalOpen(true);
-            // Clear the pending car reference
+            handleBookNow(carToBookAfterLogin);
             setCarToBookAfterLogin(null);
         }
     }, [user, carToBookAfterLogin]);
+
+    // Effect to handle post-payment confirmation display
+    useEffect(() => {
+        const checkPostPayment = async () => {
+            const postPaymentInfoRaw = sessionStorage.getItem('postPaymentInfo');
+            if (postPaymentInfoRaw) {
+                sessionStorage.removeItem('postPaymentInfo'); // Clear it immediately
+                try {
+                    const { carId, bookingId } = JSON.parse(postPaymentInfoRaw) as PostPaymentInfo;
+                    
+                    // Fetch the specific car details to show in the modal
+                    const { data: carData, error } = await supabase.from('cars').select('*').eq('id', carId).single();
+                    if (error || !carData) throw new Error('Could not fetch car details for confirmation.');
+                    
+                    const car: Car = {
+                        ...carData,
+                        fuelType: carData.fuel_type,
+                        pricePerDay: carData.price_per_day,
+                        imagePaths: carData.image_paths,
+                        images: (carData.image_paths || []).map((p: string) => supabase.storage.from('cars-photos').getPublicUrl(p).data.publicUrl),
+                        available: false, // Assume booked
+                    };
+                    
+                    setSelectedCar(car);
+                    // Pre-configure the booking modal to open at the confirmation step
+                    setInitialBookingState({ bookingId, currentStep: 6 });
+                    setIsBookingModalOpen(true);
+                } catch (e) {
+                    console.error("Error processing post-payment info:", e);
+                }
+            }
+        };
+        checkPostPayment();
+    }, []);
 
     const handleOpenSignInModal = useCallback(() => {
         setIsSignInModalOpen(true);
@@ -89,12 +147,10 @@ const HomePage: React.FC = () => {
 
     const handleBookNow = useCallback((car: Car) => {
         if (!user) {
-            // Store the car the user wants to book
             setCarToBookAfterLogin(car);
-            // Open the sign-in modal
             setIsSignInModalOpen(true);
         } else {
-            // If user is already logged in, proceed directly
+            setInitialBookingState(null); // Reset to default flow
             setSelectedCar(car);
             setIsBookingModalOpen(true);
         }
@@ -112,6 +168,8 @@ const HomePage: React.FC = () => {
             searchTerm: debouncedSearchTerm,
             seatFilter,
             fuelFilter,
+            startDate: pickupDate,
+            endDate: returnDate
         });
 
         if (error) {
@@ -127,7 +185,13 @@ const HomePage: React.FC = () => {
             setHasMoreCars(false);
         }
         setIsFetchingMore(false);
-    }, [isFetchingMore, hasMoreCars, currentPage, debouncedSearchTerm, seatFilter, fuelFilter]);
+    }, [isFetchingMore, hasMoreCars, currentPage, debouncedSearchTerm, seatFilter, fuelFilter, pickupDate, returnDate]);
+    
+    const closeBookingModal = () => {
+        setIsBookingModalOpen(false);
+        setSelectedCar(null);
+        setInitialBookingState(null);
+    }
 
     return (
         <div className="bg-gray-50 font-sans">
@@ -141,6 +205,11 @@ const HomePage: React.FC = () => {
                     setSeatFilter={setSeatFilter}
                     fuelFilter={fuelFilter}
                     setFuelFilter={setFuelFilter}
+                    onSearch={handleSearch}
+                    pickupDate={pickupDate}
+                    setPickupDate={setPickupDate}
+                    returnDate={returnDate}
+                    setReturnDate={setReturnDate}
                 />
                 <section id="cars" className="py-16 lg:py-24">
                   <div className="container mx-auto px-4">
@@ -196,7 +265,6 @@ const HomePage: React.FC = () => {
                 isOpen={isSignInModalOpen} 
                 onClose={() => {
                     setIsSignInModalOpen(false);
-                    // If the modal is closed without the user logging in, clear the pending car
                     if (!user) {
                         setCarToBookAfterLogin(null);
                     }
@@ -204,11 +272,12 @@ const HomePage: React.FC = () => {
             />
             
             <Suspense fallback={null}>
-                {selectedCar && (
+                {isBookingModalOpen && selectedCar && (
                     <BookingModal 
                         isOpen={isBookingModalOpen}
-                        onClose={() => setIsBookingModalOpen(false)}
+                        onClose={closeBookingModal}
                         car={selectedCar}
+                        initialBookingState={initialBookingState}
                     />
                 )}
                 <AIAssistant />

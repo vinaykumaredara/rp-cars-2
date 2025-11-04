@@ -56,8 +56,19 @@ const LicenseVerification: React.FC = () => {
             <div className="space-y-4">
                 {licenses.map(license => (
                     <div key={license.id} className="p-4 border rounded-lg flex flex-col md:flex-row items-start md:items-center gap-4">
-                        <div className="flex-shrink-0 w-32 h-20 bg-gray-200 rounded-md overflow-hidden cursor-pointer" onClick={() => setSelectedImage(license.license_image_url)}>
-                            <img src={license.license_image_url} alt="License thumbnail" className="w-full h-full object-cover" />
+                        <div 
+                            className="flex-shrink-0 w-32 h-20 bg-gray-200 rounded-md overflow-hidden"
+                            onClick={() => license.license_image_url && setSelectedImage(license.license_image_url)}
+                        >
+                            {license.license_image_url ? (
+                                <img 
+                                    src={license.license_image_url} 
+                                    alt="License thumbnail" 
+                                    className="w-full h-full object-cover cursor-pointer"
+                                />
+                            ) : (
+                                <div className="w-full h-full flex items-center justify-center text-xs text-center text-gray-500 p-2">Image Not Found</div>
+                            )}
                         </div>
                         <div className="flex-grow">
                             <p className="font-semibold">{license.user_name || 'N/A'}</p>

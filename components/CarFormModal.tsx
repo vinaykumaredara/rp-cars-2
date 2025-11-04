@@ -14,7 +14,7 @@ const CarFormModal: React.FC<CarFormModalProps> = ({ isOpen, onClose, onSave, ca
   const [formData, setFormData] = useState<CarFormData>({
     title: '', make: '', model: '', year: new Date().getFullYear(),
     seats: 5, fuelType: 'Petrol', transmission: 'Manual', pricePerDay: 1000,
-    verified: false, status: 'draft', booking_status: 'available',
+    verified: false, status: 'draft',
   });
 
   const [images, setImages] = useState<ImageState[]>([]);
@@ -35,7 +35,6 @@ const CarFormModal: React.FC<CarFormModalProps> = ({ isOpen, onClose, onSave, ca
       pricePerDay: car?.pricePerDay || 1000,
       verified: car?.verified || false,
       status: car?.status || 'draft',
-      booking_status: car?.booking_status || 'available',
     });
     
     // Fix: Use a const assertion on the 'type' property. This prevents TypeScript from widening
@@ -180,13 +179,6 @@ const CarFormModal: React.FC<CarFormModalProps> = ({ isOpen, onClose, onSave, ca
                         <option value="published">Published</option>
                         <option value="active">Active</option>
                         <option value="maintenance">Maintenance</option>
-                    </select>
-                </div>
-                <div>
-                    <label htmlFor="booking_status" className="block text-sm font-medium text-gray-700 mb-1">Booking Status</label>
-                    <select name="booking_status" id="booking_status" value={formData.booking_status} onChange={handleChange} className="w-full p-2 border rounded bg-white border-gray-300 focus:ring-primary focus:border-primary">
-                        <option value="available">Available</option>
-                        <option value="booked">Booked</option>
                     </select>
                 </div>
             </div>

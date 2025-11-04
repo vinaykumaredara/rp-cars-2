@@ -22,20 +22,26 @@ const ExtrasStep: React.FC<ExtrasStepProps> = ({ car, bookingData, updateBooking
 
   const { datesData } = bookingData;
 
-  const numberOfDays = useMemo(() => {
+  const billingDays = useMemo(() => {
     if (!datesData) return 0;
     const { pickupDate, pickupTime, returnDate, returnTime } = datesData;
     const start = new Date(`${pickupDate}T${pickupTime}`);
     const end = new Date(`${returnDate}T${returnTime}`);
     if (isNaN(start.getTime()) || isNaN(end.getTime()) || end <= start) return 0;
+    
     const diffMs = end.getTime() - start.getTime();
-    return Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+    const diffHours = diffMs / (1000 * 60 * 60);
+
+    if (diffHours < 12) return 0; // Should be handled by previous step
+
+    const billingUnits = Math.ceil(diffHours / 12);
+    return billingUnits / 2;
   }, [datesData]);
 
-  const baseRentalPrice = car ? numberOfDays * car.pricePerDay : 0;
+  const baseRentalPrice = car ? billingDays * car.pricePerDay : 0;
   const selectedExtrasPrice = useMemo(() => {
-    return extras.reduce((sum, extra) => sum + (extra.selected ? extra.pricePerDay * numberOfDays : 0), 0);
-  }, [extras, numberOfDays]);
+    return extras.reduce((sum, extra) => sum + (extra.selected ? extra.pricePerDay * billingDays : 0), 0);
+  }, [extras, billingDays]);
 
   const serviceChargeRate = 0.05; // 5%
   const serviceCharge = (baseRentalPrice + selectedExtrasPrice) * serviceChargeRate;
@@ -84,7 +90,7 @@ const ExtrasStep: React.FC<ExtrasStepProps> = ({ car, bookingData, updateBooking
       <div className="bg-blue-50 p-4 rounded-lg">
         <h4 className="font-semibold text-lg text-foreground mb-2">Booking Summary</h4>
         <div className="space-y-1 text-gray-700 text-sm">
-          <div className="flex justify-between"><span>Base Rental ({numberOfDays} days)</span><span>₹{baseRentalPrice.toLocaleString()}</span></div>
+          <div className="flex justify-between"><span>Base Rental ({billingDays} billing days)</span><span>₹{baseRentalPrice.toLocaleString()}</span></div>
           <div className="flex justify-between"><span>Selected Extras</span><span>₹{selectedExtrasPrice.toLocaleString()}</span></div>
           <div className="flex justify-between"><span>Service Charge (5%)</span><span>₹{serviceCharge.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
           <div className="flex justify-between font-bold text-base border-t border-blue-200 pt-2 mt-2"><span>Total Amount</span><span>₹{totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>

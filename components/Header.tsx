@@ -90,12 +90,16 @@ const Header: React.FC<HeaderProps> = ({ onSignInClick }) => {
         <div className="hidden lg:flex items-center space-x-4">
           {user ? (
             <>
-              {isAdmin && (
+              {isAdmin ? (
                 <a href="#/admin" onClick={(e) => handleNavigate(e, '#/admin')} className="px-4 py-2 rounded-lg text-white bg-accent hover:opacity-90 transition-all duration-300 font-semibold">
                   Admin Panel
                 </a>
+              ) : (
+                <a href="#/dashboard" onClick={(e) => handleNavigate(e, '#/dashboard')} className="px-4 py-2 rounded-lg text-primary-hover font-semibold hover:bg-gray-100 transition-all">
+                  My Account
+                </a>
               )}
-              <span className="text-sm text-gray-600 truncate max-w-xs">{user.email}</span>
+              <span className="text-sm text-gray-600 truncate max-w-xs hidden md:inline">{user.email}</span>
               <button onClick={signOut} className="px-4 py-2 rounded-lg text-primary border border-primary hover:bg-primary hover:text-white transition-all duration-300">
                 Sign Out
               </button>
@@ -143,10 +147,14 @@ const Header: React.FC<HeaderProps> = ({ onSignInClick }) => {
           <div className="border-t w-full my-2"></div>
            {user ? (
             <>
-              {isAdmin && (
+              {isAdmin ? (
                   <a href="#/admin" onClick={(e) => handleNavigate(e, '#/admin')} className="w-3/4 text-center px-4 py-2 rounded-lg text-white bg-accent hover:opacity-90 transition-all duration-300 font-semibold">
                     Admin Panel
                   </a>
+              ) : (
+                <a href="#/dashboard" onClick={(e) => handleNavigate(e, '#/dashboard')} className="w-3/4 text-center px-4 py-2 rounded-lg text-primary-hover font-semibold hover:bg-gray-100 transition-all">
+                  My Account
+                </a>
               )}
               <span className="text-sm text-gray-600 truncate max-w-xs">{user.email}</span>
               <button onClick={() => { signOut(); setIsMenuOpen(false); }} className="w-3/4 px-4 py-2 rounded-lg text-primary border border-primary hover:bg-primary hover:text-white transition-all duration-300">

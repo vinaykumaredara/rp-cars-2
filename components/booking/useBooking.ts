@@ -35,10 +35,14 @@ export interface UseBookingResult {
   isAuthenticatedAndPhoneVerified: boolean;
 }
 
-export const useBooking = (car: Car | null): UseBookingResult => {
+export const useBooking = (car: Car | null, initialBookingState: Partial<BookingDraft> | null = null): UseBookingResult => {
   const { user, loading: authLoading } = useAuth();
-  const [currentStep, setCurrentStep] = useState(0);
-  const [bookingData, setBookingData] = useState<BookingDraft>({ carId: car?.id || '', currentStep: 0 });
+  const [currentStep, setCurrentStep] = useState(initialBookingState?.currentStep || 0);
+  const [bookingData, setBookingData] = useState<BookingDraft>({ 
+      carId: car?.id || '', 
+      currentStep: 0,
+      ...initialBookingState 
+  });
   const [isLoading, setIsLoading] = useState(true);
   const [bookingError, setBookingError] = useState<string | null>(null);
   const [userPhone, setUserPhone] = useState<string | null>(null);
@@ -52,6 +56,12 @@ export const useBooking = (car: Car | null): UseBookingResult => {
   useEffect(() => {
     const initializeBooking = async () => {
       if (authLoading || !car) return;
+      
+      // If we are starting from an initial state (like post-payment), don't re-initialize.
+      if (initialBookingState) {
+          setIsLoading(false);
+          return;
+      }
 
       setIsLoading(true);
       setBookingError(null);
@@ -99,14 +109,15 @@ export const useBooking = (car: Car | null): UseBookingResult => {
     };
 
     initializeBooking();
-  }, [car, user, authLoading, updateBookingData]);
+  }, [car, user, authLoading, updateBookingData, initialBookingState]);
 
   useEffect(() => {
-    if (user && bookingData.carId) {
+    // Don't save draft for the final confirmation step
+    if (user && bookingData.carId && currentStep < stepsConfig.length - 1) {
       const draftToSave = { ...bookingData, currentStep };
       sessionStorage.setItem(`bookingDraft-${user.id}-${bookingData.carId}`, JSON.stringify(draftToSave));
     }
-  }, [bookingData, currentStep, user]);
+  }, [bookingData, currentStep, user, stepsConfig.length]);
 
   const nextStep = useCallback(() => {
     setCurrentStep(prev => Math.min(prev + 1, stepsConfig.length - 1));

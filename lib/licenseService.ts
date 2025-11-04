@@ -1,4 +1,3 @@
-
 import { supabase } from './supabaseClient';
 import type { License } from '../types';
 
@@ -7,25 +6,59 @@ const BUCKET_NAME = 'license-uploads';
 /**
  * Fetches the user's current license status.
  */
-export const fetchUserLicense = async (userId: string): Promise<{ license: Pick<License, 'id' | 'verified'> | null, error: string | null }> => {
+export const fetchUserLicense = async (userId: string): Promise<{ license: License | null, error: string | null }> => {
     try {
         const { data, error } = await supabase
             .from('licenses')
-            .select('id, verified')
+            .select('id, user_id, storage_path, verified, created_at')
             .eq('user_id', userId)
+            .order('created_at', { ascending: false }) // Get the latest one
+            .limit(1)
             .maybeSingle();
+        
         if (error) throw error;
-        return { license: data, error: null };
+        if (!data) return { license: null, error: null };
+
+        let imageUrl = '';
+        if (data.storage_path) {
+            const { data: signedUrlData, error: signedUrlError } = await supabase.storage
+                .from(BUCKET_NAME)
+                .createSignedUrl(data.storage_path, 3600);
+            
+            if (signedUrlError) {
+                if (signedUrlError.message.toLowerCase().includes('object not found')) {
+                    // The record exists, but the file is missing. This is a data integrity issue.
+                    // Return the license data without the URL, but with a specific error to guide the user.
+                    const licenseData: License = { ...data, license_image_url: '' };
+                    return { license: licenseData, error: "Your license record was found, but the image file is missing. Please re-upload your license." };
+                } else {
+                    console.error(`Failed to create signed URL for ${data.storage_path}:`, signedUrlError);
+                    // For other errors (like permissions), return a more generic error.
+                    return { license: null, error: "There was a problem loading your license image. Please try again." };
+                }
+            } else if (signedUrlData && signedUrlData.signedUrl) {
+                imageUrl = signedUrlData.signedUrl;
+            }
+        }
+        
+        const licenseData: License = {
+            ...data,
+            license_image_url: imageUrl,
+        };
+
+        return { license: licenseData, error: null };
     } catch (err: any) {
         console.error('Error fetching user license:', err);
         return { license: null, error: err.message };
     }
 };
 
+
 /**
- * Uploads a user's license file and creates a record in the database.
+ * Uploads a user's license file, creates a database record, and returns the full license object
+ * with a signed URL for immediate display.
  */
-export const uploadLicense = async (userId: string, file: File): Promise<{ error: string | null }> => {
+export const uploadLicense = async (userId: string, file: File): Promise<{ license: License | null; error: string | null }> => {
     try {
         const fileName = `${userId}/${crypto.randomUUID()}-${file.name}`;
 
@@ -35,18 +68,48 @@ export const uploadLicense = async (userId: string, file: File): Promise<{ error
             .upload(fileName, file);
         if (uploadError) throw new Error(`Storage upload failed: ${uploadError.message}`);
 
-        // Insert record into licenses table
-        const { error: dbError } = await supabase.from('licenses').insert({
+        const newLicenseRecord = {
             user_id: userId,
             storage_path: uploadData.path,
             verified: false,
-        });
-        if (dbError) throw new Error(`Database insert failed: ${dbError.message}`);
+        };
+        
+        // Insert record and immediately select it back to get all fields
+        const { data: dbData, error: dbError } = await supabase
+            .from('licenses')
+            .insert(newLicenseRecord)
+            .select()
+            .single();
 
-        return { error: null };
+        if (dbError) throw new Error(`Database insert failed: ${dbError.message}`);
+        if (!dbData) throw new Error('Failed to retrieve new license record after insert.');
+
+        // Create a signed URL for the newly uploaded file to show the user
+        let imageUrl = '';
+        const { data: signedUrlData, error: signedUrlError } = await supabase.storage
+            .from(BUCKET_NAME)
+            .createSignedUrl(dbData.storage_path, 3600);
+
+        if (signedUrlError) {
+            console.error('Could not create signed URL immediately after upload:', signedUrlError);
+            // Proceed without URL, UI can handle it gracefully.
+        } else {
+            imageUrl = signedUrlData.signedUrl;
+        }
+
+        const fullLicenseData: License = {
+            id: dbData.id,
+            user_id: dbData.user_id,
+            storage_path: dbData.storage_path,
+            verified: dbData.verified,
+            created_at: dbData.created_at,
+            license_image_url: imageUrl,
+        };
+
+        return { license: fullLicenseData, error: null };
     } catch (err: any) {
         console.error('Error uploading license:', err);
-        return { error: err.message };
+        return { license: null, error: err.message };
     }
 };
 
@@ -80,14 +143,18 @@ export const fetchAllLicensesForVerification = async (): Promise<{ licenses: Lic
             rpcData.map(async (item: any) => {
                 let imageUrl = '';
                 if (item.storage_path) {
-                    // Generate a signed URL that expires in 1 hour (3600 seconds) for secure viewing.
                     const { data: signedUrlData, error: signedUrlError } = await supabase.storage
                         .from(BUCKET_NAME)
                         .createSignedUrl(item.storage_path, 3600);
                     
                     if (signedUrlError) {
-                        console.error(`Failed to create signed URL for ${item.storage_path}:`, signedUrlError);
-                    } else {
+                        if (signedUrlError.message.toLowerCase().includes('object not found')) {
+                           // The file is missing in storage, imageUrl will remain empty.
+                        } else {
+                            // Log other errors (e.g., RLS issues) for admin debugging.
+                            console.error(`Failed to create signed URL for ${item.storage_path}:`, signedUrlError);
+                        }
+                    } else if (signedUrlData && signedUrlData.signedUrl) {
                         imageUrl = signedUrlData.signedUrl;
                     }
                 }

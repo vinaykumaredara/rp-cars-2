@@ -1,5 +1,5 @@
 import { supabase } from './supabaseClient';
-import type { UserDetail, Role, UserStatus } from '../types';
+import type { UserDetail, Role, UserStatus, BookingDetail } from '../types';
 
 /**
  * Fetches all users by calling a secure 'get_all_users' database function (RPC).
@@ -54,7 +54,7 @@ export const fetchUsersWithRoles = async (): Promise<{ users: UserDetail[]; erro
 export const fetchUserProfile = async (userId: string) => {
     const { data, error } = await supabase
         .from('profiles')
-        .select('phone, status')
+        .select('phone, status, full_name')
         .eq('id', userId)
         .maybeSingle();
     
@@ -66,16 +66,43 @@ export const fetchUserProfile = async (userId: string) => {
 };
 
 /**
+ * Fetches the currently authenticated user's full profile.
+ */
+export const fetchCurrentProfile = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return { profile: null, error: 'Not authenticated' };
+    return fetchUserProfile(user.id);
+};
+
+
+/**
  * Updates a user's phone number in their profile.
  */
 export const updateUserPhone = async (userId: string, phone: string) => {
     const { error } = await supabase
       .from('profiles')
-      .upsert({ id: userId, phone, status: 'active' as UserStatus, updated_at: new Date().toISOString() }, { onConflict: 'id' });
+      .update({ phone, updated_at: new Date().toISOString() })
+      .eq('id', userId);
 
     if (error) {
         console.error('Error updating phone number:', error);
         return { error: 'Failed to save phone number. Please try again.' };
+    }
+    return { error: null };
+};
+
+/**
+ * Updates the current user's profile details using a secure RPC.
+ */
+export const updateCurrentUserProfile = async (details: { name: string; phone: string }) => {
+    const { error } = await supabase.rpc('update_user_profile', {
+        p_full_name: details.name,
+        p_phone: details.phone
+    });
+
+    if (error) {
+        console.error('Error updating current user profile:', error);
+        return { error: 'Failed to update profile. Please try again.' };
     }
     return { error: null };
 };
@@ -108,6 +135,22 @@ export const updateUserDetails = async (
         return { error: err.message || 'An unexpected error occurred during the update.' };
     }
 };
+
+/**
+ * Fetches all bookings for the currently authenticated user.
+ */
+export const fetchUserBookings = async (): Promise<{ bookings: BookingDetail[]; error: string | null }> => {
+  try {
+    const { data, error } = await supabase.rpc('get_user_bookings');
+    if (error) throw error;
+    // The RPC returns a JSON array, which is already in the correct shape.
+    return { bookings: data || [], error: null };
+  } catch (err: any) {
+    console.error('Error fetching user bookings:', err);
+    return { bookings: [], error: err.message };
+  }
+};
+
 
 /**
  * Updates the status for a specific user in the profiles table.

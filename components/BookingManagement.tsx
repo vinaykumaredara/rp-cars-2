@@ -29,6 +29,28 @@ const BookingManagement: React.FC = () => {
       minute: '2-digit',
     });
   };
+  
+  const getStatusBadge = (status: BookingDetail['status'] | string) => {
+      switch (status) {
+          case 'confirmed':
+              return <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">Confirmed</span>;
+          case 'success':
+              return <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">Success</span>;
+          case 'hold':
+              return <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800">On Hold</span>;
+          case 'completed':
+              return <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">Completed</span>;
+          case 'cancelled':
+              return <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">Cancelled</span>;
+          case 'failed':
+              return <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">Failed</span>;
+          case 'pending_payment':
+          case 'pending':
+              return <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-800">Pending Payment</span>;
+          default:
+              return <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-800 capitalize">{status}</span>;
+      }
+  };
 
   const renderContent = () => {
     if (isLoading) {
@@ -50,10 +72,9 @@ const BookingManagement: React.FC = () => {
       <table className="min-w-full divide-y divide-gray-200">
         <thead className="bg-gray-50">
           <tr>
-            <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Customer</th>
-            <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Car</th>
+            <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Customer & Car</th>
             <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Booking Period</th>
-            <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+            <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status & Extensions</th>
             <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Total</th>
           </tr>
         </thead>
@@ -63,18 +84,28 @@ const BookingManagement: React.FC = () => {
               <td className="px-6 py-4 whitespace-nowrap">
                 <div className="text-sm font-medium text-gray-900">{booking.customer_name || 'N/A'}</div>
                 <div className="text-sm text-gray-500">{booking.customer_phone || 'N/A'}</div>
+                 <div className="text-sm text-gray-800 font-semibold mt-1">{booking.car_title || 'N/A'}</div>
               </td>
-              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{booking.car_title || 'N/A'}</td>
               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                 <div>From: {formatDate(booking.start_datetime)}</div>
                 <div>To: {formatDate(booking.end_datetime)}</div>
+                {booking.status === 'hold' && booking.hold_expires_at && (
+                    <div className="text-xs text-red-600">Hold Expires: {formatDate(booking.hold_expires_at)}</div>
+                )}
               </td>
               <td className="px-6 py-4 whitespace-nowrap">
-                <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full capitalize ${
-                    booking.status === 'confirmed' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
-                }`}>
-                  {booking.status}
-                </span>
+                {getStatusBadge(booking.status)}
+                {booking.booking_extensions && booking.booking_extensions.length > 0 && (
+                    <div className="mt-2 text-xs text-gray-500 space-y-1">
+                        <p className="font-semibold">Extensions:</p>
+                        {booking.booking_extensions.map(ext => (
+                            <div key={ext.id} className="flex items-center gap-2">
+                                <span>+{ext.added_hours}hrs</span>
+                                {getStatusBadge(ext.payment_status)}
+                            </div>
+                        ))}
+                    </div>
+                )}
               </td>
               <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-semibold text-gray-900">
                 ₹{booking.total_amount.toLocaleString()}
