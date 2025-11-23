@@ -49,25 +49,22 @@ const ExtendBookingModal: React.FC<ExtendBookingModalProps> = ({ isOpen, onClose
     setIsLoading(true);
     setError(null);
     
-    // The service returns an object { data: rpcData, error: apiError }
-    const result = await createExtensionIntent(booking.id, finalAddedHours);
+    const { data, error: apiError } = await createExtensionIntent(booking.id, finalAddedHours);
 
-    if (result.error) {
-        setError(result.error);
+    if (apiError || !data) {
+        setError(apiError || 'Failed to create extension intent. Missing data from server.');
         setIsLoading(false);
         return;
     }
     
-    // Explicitly access the 'data' property and validate it is not null
-    const rpcData = result.data;
-    if (!rpcData || !rpcData.paymentId || !rpcData.extensionId) {
-        setError('Failed to create extension. Missing required data from server.');
+    // Simulate payment redirect
+    const { paymentId, extensionId } = data;
+    if (!paymentId || !extensionId) {
+        setError('Failed to create extension. Missing required IDs from server.');
         setIsLoading(false);
         return;
     }
 
-    // Simulate payment redirect
-    const { paymentId, extensionId } = rpcData;
     setTimeout(() => {
         onClose(); // Close modal as user is "redirected"
         window.location.hash = `#/payment/callback?payment_id=${paymentId}&extension_id=${extensionId}&status=success`;

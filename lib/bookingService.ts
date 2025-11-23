@@ -1,6 +1,8 @@
 import { supabase } from './supabaseClient';
 import type { BookingDraft, Car } from '../types';
 import type { User } from '@supabase/supabase-js';
+import { calculateBookingPrice } from './bookingUtils';
+import { parseError } from './errorUtils';
 
 /**
  * Creates a new booking and an associated pending payment record.
@@ -19,49 +21,36 @@ export const createBookingAndPayment = async (
   paymentAmount: number,
   paymentMethod: 'paytm'
 ) => {
-  const { datesData, extrasData } = bookingData;
+  const { datesData, extrasData, appliedPromo } = bookingData;
 
   if (!datesData || !extrasData) {
     return { data: null, error: 'Incomplete booking data. Please review your selections.' };
   }
 
   try {
+    const { subtotal } = calculateBookingPrice(datesData, extrasData, car.pricePerDay);
     const startDateTime = new Date(`${datesData.pickupDate}T${datesData.pickupTime}`);
     const endDateTime = new Date(`${datesData.returnDate}T${datesData.returnTime}`);
-    
-    const diffMs = endDateTime.getTime() - startDateTime.getTime();
-    const diffHours = diffMs / (1000 * 60 * 60);
-    const billingUnits = Math.ceil(diffHours / 12);
-    const billingDays = billingUnits / 2;
-
-    const baseRentalPrice = car.pricePerDay * billingDays;
-    const selectedExtrasPrice = extrasData.extras.reduce(
-      (sum, extra) => sum + (extra.selected ? extra.pricePerDay * billingDays : 0), 0
-    );
-    const serviceCharge = (baseRentalPrice + selectedExtrasPrice) * 0.05;
-    const totalAmount = baseRentalPrice + selectedExtrasPrice + serviceCharge;
 
     const { data, error } = await supabase.rpc('create_booking_and_payment', {
         p_car_id: car.id,
         p_user_id: user.id,
         p_start_datetime: startDateTime.toISOString(),
         p_end_datetime: endDateTime.toISOString(),
-        p_total_amount: totalAmount,
+        p_subtotal_amount: subtotal,
         p_payment_amount: paymentAmount,
         p_payment_method: paymentMethod,
+        p_promo_code_id: appliedPromo?.id || null,
     });
     
-    if (error) {
-        throw new Error(error.message);
-    }
+    if (error) throw error;
 
     return { data, error: null };
-  } catch (err: any) {
-    console.error('Create booking and payment error:', err);
-    if (err.message && err.message.includes('Car is not available')) {
+  } catch (err: unknown) {
+    if (err instanceof Error && err.message.includes('Car is not available')) {
         return { data: null, error: 'Sorry, this car is no longer available for the selected dates. Please try another time.' };
     }
-    return { data: null, error: err.message || 'An unexpected error occurred while creating the booking.' };
+    return { data: null, error: parseError(err) };
   }
 };
 
@@ -82,9 +71,8 @@ export const createExtensionIntent = async (bookingId: string, addedHours: numbe
     
     return { data, error: null };
 
-  } catch (err: any) {
-    console.error('Create extension intent error:', err);
-    return { data: null, error: err.message || 'An unexpected error occurred while creating the extension.' };
+  } catch (err: unknown) {
+    return { data: null, error: parseError(err) };
   }
 };
 
@@ -118,11 +106,10 @@ export const verifyPaytmPayment = async (
     // Call the secure RPC function to update the payment and booking status.
     const { data, error } = await supabase.rpc('verify_and_update_payment', params);
 
-    if (error) throw new Error(error.message);
+    if (error) throw error;
 
     return { success: true, data, error: null };
-  } catch (err: any) {
-    console.error('Verify payment error:', err);
-    return { success: false, error: err?.message ?? 'Failed to verify payment.' };
+  } catch (err: unknown) {
+    return { success: false, error: parseError(err) };
   }
 };

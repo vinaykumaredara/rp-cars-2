@@ -18,7 +18,7 @@ const Toast: React.FC<ToastProps> = ({ id, message, type, onClose }) => {
     return () => clearTimeout(timer);
   }, [id, onClose]);
 
-  const baseClasses = "flex items-center w-full max-w-xs p-4 mb-4 text-gray-500 bg-white rounded-lg shadow-lg";
+  const baseClasses = "flex items-center w-full max-w-sm p-4 mb-4 text-gray-500 bg-white rounded-lg shadow-lg";
   const typeClasses = {
     success: "text-green-800 bg-green-100",
     error: "text-red-800 bg-red-100",
@@ -53,7 +53,7 @@ const Toast: React.FC<ToastProps> = ({ id, message, type, onClose }) => {
 
 export const ToastContainer: React.FC<{ toasts: any[]; removeToast: (id: number) => void }> = ({ toasts, removeToast }) => {
   return (
-    <div className="fixed top-5 right-5 z-[100]">
+    <div className="fixed top-24 right-8 z-[100]">
       {toasts.map(toast => (
         <Toast key={toast.id} {...toast} onClose={removeToast} />
       ))}

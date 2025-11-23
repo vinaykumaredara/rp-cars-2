@@ -11,7 +11,7 @@ const PaymentHandler: React.FC = () => {
             try {
                 const hashParams = new URLSearchParams(window.location.hash.split('?')[1]);
                 const paymentId = hashParams.get('payment_id');
-                const paymentStatus = hashParams.get('status');
+                const paymentStatusFromUrl = hashParams.get('status');
                 
                 // For initial bookings
                 const bookingId = hashParams.get('booking_id');
@@ -20,11 +20,14 @@ const PaymentHandler: React.FC = () => {
                 // For extensions
                 const extensionId = hashParams.get('extension_id');
 
-                if (!paymentId || paymentId === 'undefined' || !paymentStatus) {
+                if (!paymentId || paymentId === 'undefined' || !paymentStatusFromUrl) {
                     throw new Error('Invalid payment callback URL. Missing or invalid required parameters.');
                 }
                 
-                // This simulates the backend verifying the payment.
+                // Simulate payment failure for testing if needed
+                // const paymentStatus = 'failed';
+                const paymentStatus = paymentStatusFromUrl;
+
                 const { success, error: verificationError } = await verifyPaytmPayment(paymentId, paymentStatus);
 
                 if (!success) {
@@ -32,12 +35,12 @@ const PaymentHandler: React.FC = () => {
                 }
                 
                 if (paymentStatus === 'success') {
+                    // Clear any previous attempt info on success
+                    sessionStorage.removeItem('paymentAttemptInfo');
                     if (extensionId) {
-                        // It's an extension payment
                         sessionStorage.setItem('postExtensionSuccess', 'true');
                         setRedirectPath('#/dashboard');
                     } else if (bookingId && carId) {
-                        // It's an initial booking payment
                         sessionStorage.setItem('postPaymentInfo', JSON.stringify({ carId, bookingId }));
                         setRedirectPath('#/');
                     }
@@ -55,7 +58,6 @@ const PaymentHandler: React.FC = () => {
     }, []);
     
     useEffect(() => {
-        // Redirect on success
         if (status === 'success') {
             const timer = setTimeout(() => {
                 window.location.hash = redirectPath;
@@ -64,6 +66,11 @@ const PaymentHandler: React.FC = () => {
         }
     }, [status, redirectPath]);
 
+    const handleRetry = () => {
+        // This flag will be picked up by HomePage to re-open the booking modal
+        sessionStorage.setItem('retryPayment', 'true');
+        window.location.hash = '#/';
+    };
 
     return (
         <div className="flex items-center justify-center min-h-screen bg-gray-100 font-sans">
@@ -90,9 +97,17 @@ const PaymentHandler: React.FC = () => {
                          <svg className="w-16 h-16 mx-auto text-red-500 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                         <h1 className="text-2xl font-bold text-foreground">Payment Failed</h1>
                         <p className="bg-red-100 text-red-700 p-3 rounded-md my-4 text-sm">{error}</p>
-                        <a href="#/" className="px-6 py-2 rounded-lg bg-primary text-white font-semibold hover:bg-primary-hover transition">
-                            Return to Homepage
-                        </a>
+                        <div className="flex justify-center space-x-4">
+                            <a href="#/" className="px-6 py-2 rounded-lg bg-gray-200 text-gray-800 font-semibold hover:bg-gray-300 transition">
+                                Return to Homepage
+                            </a>
+                             <button 
+                                onClick={handleRetry}
+                                className="px-6 py-2 rounded-lg bg-primary text-white font-semibold hover:bg-primary-hover transition"
+                            >
+                                Retry Payment
+                            </button>
+                        </div>
                     </>
                 )}
             </div>

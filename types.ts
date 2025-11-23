@@ -47,7 +47,7 @@ export interface CarBase {
 
 export interface Car extends CarBase {
   id: string;
-  images: string[];
+  images?: string[]; // Made optional as components will generate URLs from imagePaths
   imagePaths: string[];
   available: boolean;
 }
@@ -96,6 +96,8 @@ export interface BookingDetail {
   hold_expires_at?: string | null;
   booking_extensions?: BookingExtension[];
   cars?: Car;
+  promo_code_id: string | null;
+  discount_amount: number | null;
 }
 
 // License Verification
@@ -115,12 +117,27 @@ export interface License {
 export interface PromoCode {
   id: string;
   code: string;
-  discount_percentage: number;
-  max_uses: number | null;
-  uses: number;
-  is_active: boolean;
-  expires_at: string | null;
+  discount_percent: number | null;
+  discount_flat: number | null;
+  valid_from: string | null;
+  valid_to: string | null;
+  active: boolean;
+  usage_limit: number;
+  times_used: number;
+  last_used_at: string | null;
   created_at: string;
+  updated_at: string;
+}
+
+export type ValidatedPromo = Pick<PromoCode, 'id' | 'code' | 'discount_percent' | 'discount_flat'>;
+
+export interface PromoValidationResult {
+  valid: boolean;
+  id?: string;
+  code?: string;
+  discount_percent?: number | null;
+  discount_flat?: number | null;
+  message?: string | null;
 }
 
 // Payments
@@ -181,6 +198,9 @@ export interface BookingDraft {
   extrasData?: ExtrasData;
   paymentData?: PaymentData;
   bookingId?: string;
+  // Promo code fields
+  promoCodeInput?: string; // User's raw input
+  appliedPromo?: ValidatedPromo | null; // Validated promo details
 }
 
 export interface BookingStep {

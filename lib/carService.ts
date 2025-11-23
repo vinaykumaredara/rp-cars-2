@@ -1,5 +1,50 @@
 import { supabase } from './supabaseClient';
 import type { Car, FuelType, CarFormData, ImageState } from '../types';
+import { parseError } from './errorUtils';
+
+const CARS_PHOTOS_BUCKET = 'cars-photos';
+
+/**
+ * Defines the available image transformation options from Supabase Storage.
+ * This interface is kept for potential future use but transformations are currently disabled.
+ */
+interface ImageTransformations {
+    width?: number;
+    height?: number;
+    quality?: number;
+    resize?: 'cover' | 'contain' | 'fill';
+}
+
+/**
+ * Constructs a public URL for a car image, handling both relative paths and full URLs
+ * to defensively support potentially inconsistent data. This is the single source of truth for all car image URLs.
+ * IMPORTANT: Image transformations are currently disabled to ensure compatibility with all Supabase plans.
+ * This function will always return the original, untransformed image URL.
+ * @param path - The path to the image, which can be relative or a full URL.
+ * @param transformations - Optional settings, currently ignored to ensure images always load.
+ * @returns A fully-formed, publicly accessible URL for the image.
+ */
+export const getCarImageUrl = (path: string, transformations?: ImageTransformations): string => {
+  if (!path) {
+    // Return an empty string for invalid paths to be handled by the UI component's error state.
+    return '';
+  }
+
+  // Defensive check: If the path is already a full URL, return it directly.
+  if (path.startsWith('http')) {
+    return path;
+  }
+
+  // Always return the original, untransformed image URL. This is a robust fix
+  // to prevent broken image links on Supabase plans that may not have the
+  // image transformation feature enabled.
+  const { data } = supabase.storage
+    .from(CARS_PHOTOS_BUCKET)
+    .getPublicUrl(path);
+    
+  return data?.publicUrl || '';
+};
+
 
 interface FetchCarsOptions {
   page?: number;
@@ -9,6 +54,7 @@ interface FetchCarsOptions {
   fuelFilter?: FuelType[];
   startDate?: string;
   endDate?: string;
+  adminView?: boolean;
 }
 
 /**
@@ -16,27 +62,54 @@ interface FetchCarsOptions {
  */
 export const fetchCarsFromDB = async (options: FetchCarsOptions = {}): Promise<{ cars: Car[]; error: string | null; count: number | null }> => {
     try {
-        const { page, limit, searchTerm, seatFilter, fuelFilter, startDate, endDate } = options;
+        const { page = 1, limit = 9, searchTerm, seatFilter, fuelFilter, startDate, endDate, adminView = false } = options;
 
-        let availableCarIds: string[] | null = null;
+        // Select specific columns without aliasing to ensure predictable data structure.
+        let query = supabase
+            .from('cars')
+            .select(`
+                id,
+                title,
+                make,
+                model,
+                year,
+                seats,
+                transmission,
+                verified,
+                status,
+                available,
+                fuel_type,
+                price_per_day,
+                image_paths
+            `, { count: 'exact' });
 
-        // If a date range is provided, first get the IDs of available cars.
+        // For public view, only show cars with 'published' status. Availability is handled on the Car Card.
+        if (!adminView) {
+            query = query.eq('status', 'published');
+        }
+
+        // If a date range is provided, further filter by temporal availability (booking conflicts).
         if (startDate && endDate) {
             const { data: carIdsData, error: availabilityError } = await supabase.rpc('get_available_cars', {
                 start_ts: new Date(startDate).toISOString(),
                 end_ts: new Date(endDate).toISOString(),
             });
-            if (availabilityError) throw availabilityError;
-            availableCarIds = carIdsData || [];
-        }
 
-        let query = supabase
-            .from('cars')
-            .select('*', { count: 'exact' }) // Use 'exact' for accurate pagination with filters
-            .eq('status', 'published');
+            if (availabilityError) throw availabilityError;
+
+            const availableCarIds = carIdsData;
+            // If the RPC returns an empty list, no cars are free for the period, so we can return early.
+            if (!availableCarIds || availableCarIds.length === 0) {
+                return { cars: [], error: null, count: 0 };
+            }
+            // Add the temporal availability filter to our main query.
+            query = query.in('id', availableCarIds);
+        }
         
+        // Apply other search and filter criteria.
         if (searchTerm) {
-          query = query.or(`title.ilike.%${searchTerm}%,make.ilike.%${searchTerm}%,model.ilike.%${searchTerm}%`);
+            const formattedSearchTerm = searchTerm.trim().replace(/\s+/g, ' & ');
+            query = query.textSearch('fts', formattedSearchTerm);
         }
         if (seatFilter && seatFilter !== 'all') {
             query = query.eq('seats', seatFilter);
@@ -44,156 +117,147 @@ export const fetchCarsFromDB = async (options: FetchCarsOptions = {}): Promise<{
         if (fuelFilter && fuelFilter.length > 0) {
             query = query.in('fuel_type', fuelFilter);
         }
-        // If we have a list of available car IDs, filter the main query by them.
-        if (availableCarIds !== null) {
-            if (availableCarIds.length === 0) {
-                // No cars are available, so we can return early.
-                return { cars: [], error: null, count: 0 };
-            }
-            query = query.in('id', availableCarIds);
-        }
 
-        if (page && limit) {
-            const from = (page - 1) * limit;
-            const to = page * limit - 1;
-            query = query.range(from, to);
-        }
+        // Apply pagination and ordering.
+        const from = (page - 1) * limit;
+        const to = from + limit - 1;
+        query = query.range(from, to).order('created_at', { ascending: false });
         
-        const { data, error, count } = await query
-            .order('year', { ascending: false })
-            .order('title', { ascending: true });
-
+        const { data, error, count } = await query;
         if (error) throw error;
-
-        if (data) {
-            const formattedData: Car[] = data.map(car => {
-                const imagePaths = (Array.isArray(car.image_paths) ? car.image_paths : [])
-                    .filter((path): path is string => typeof path === 'string' && path.trim() !== '');
-                
-                const imageUrls = imagePaths.map(path => {
-                    const { data: { publicUrl } } = supabase.storage.from('cars-photos').getPublicUrl(path);
-                    return publicUrl;
-                });
-                
-                // If a date filter is applied, respect the car's static 'available' flag.
-                // The list of cars has already been filtered for dynamic availability.
-                // If no date filter is applied, show all published cars as available for browsing.
-                const isDateFiltered = availableCarIds !== null;
-
-                return {
-                    id: car.id,
-                    title: car.title || car.model,
-                    make: car.make || 'N/A',
-                    model: car.model,
-                    year: car.year,
-                    seats: car.seats,
-                    fuelType: car.fuel_type,
-                    transmission: car.transmission,
-                    pricePerDay: car.price_per_day,
-                    images: imageUrls,
-                    imagePaths: imagePaths,
-                    available: isDateFiltered ? car.available : true,
-                    verified: car.verified,
-                    status: car.status,
-                };
-            });
-            return { cars: formattedData, error: null, count };
-        }
-
-        return { cars: [], error: 'No car data found.', count: 0 };
-    } catch (err: any) {
-        console.error('Error fetching cars:', err);
-        const errorMessage = err.message || 'An unexpected error occurred while fetching car data.';
-        return { cars: [], error: `Failed to fetch car data: ${errorMessage}`, count: 0 };
-    }
-};
-
-/**
- * Updates a car's static availability status.
- */
-export const updateCarAvailability = async (carId: string, available: boolean): Promise<{ error: string | null }> => {
-    try {
-        const { error } = await supabase
-            .from('cars')
-            .update({ available })
-            .eq('id', carId);
-
-        if (error) throw error;
-        return { error: null };
-    } catch (err: any) {
-        console.error('Error updating car availability:', err);
-        return { error: err.message || 'An unexpected error occurred.' };
-    }
-};
-
-
-/**
- * Creates or updates a car, including handling image uploads and deletions.
- */
-export const upsertCar = async (formData: CarFormData, images: ImageState[], existingCar: Car | null) => {
-    try {
-        const initialPaths = existingCar?.imagePaths || [];
-        const finalExistingPaths = images
-            .filter((img): img is Extract<ImageState, { type: 'existing' }> => img.type === 'existing')
-            .map(img => img.path);
         
-        const pathsToDelete = initialPaths.filter(path => !finalExistingPaths.includes(path));
+        // Manually map snake_case columns from the DB to camelCase properties for the application.
+        const cars: Car[] = (data || []).map((dbCar: any) => ({
+            id: dbCar.id,
+            title: dbCar.title,
+            make: dbCar.make,
+            model: dbCar.model,
+            year: dbCar.year,
+            seats: dbCar.seats,
+            fuelType: dbCar.fuel_type,
+            transmission: dbCar.transmission,
+            pricePerDay: dbCar.price_per_day,
+            verified: dbCar.verified,
+            status: dbCar.status,
+            imagePaths: dbCar.image_paths || [],
+            available: dbCar.available,
+        }));
 
-        if (pathsToDelete.length > 0) {
-            const { error: deleteError } = await supabase.storage.from('cars-photos').remove(pathsToDelete);
-            if (deleteError) throw new Error(`Failed to delete old images: ${deleteError.message}`);
-        }
-
-        const newFilesToUpload = images.filter((img): img is Extract<ImageState, { type: 'new' }> => img.type === 'new');
-        const uploadedImagePaths: string[] = [];
-        for (const img of newFilesToUpload) {
-            const fileName = `${crypto.randomUUID()}-${img.file.name}`;
-            const { data, error: uploadError } = await supabase.storage.from('cars-photos').upload(fileName, img.file);
-            if (uploadError) throw new Error(`Image upload failed: ${uploadError.message}`);
-            if (data) uploadedImagePaths.push(data.path);
-        }
-
-        const finalImagePaths = [...finalExistingPaths, ...uploadedImagePaths];
-        const carDataForDB = {
-            title: formData.title, make: formData.make, model: formData.model, year: formData.year,
-            seats: formData.seats, fuel_type: formData.fuelType, transmission: formData.transmission,
-            price_per_day: formData.pricePerDay, image_paths: finalImagePaths, verified: formData.verified,
-            status: formData.status,
-        };
-
-        if (existingCar) {
-            const { error: updateError } = await supabase.from('cars').update(carDataForDB).eq('id', existingCar.id);
-            if (updateError) throw new Error(`Failed to update car: ${updateError.message}`);
-        } else {
-            const { error: insertError } = await supabase.from('cars').insert([carDataForDB]);
-            if (insertError) throw new Error(`Failed to add new car: ${insertError.message}`);
-        }
-        return { error: null };
-    } catch (err: any) {
-        console.error('Upsert car error:', err);
-        return { error: err.message || 'An unexpected error occurred.' };
+        return { cars, error: null, count };
+    } catch (e: unknown) {
+        console.error("Error fetching cars:", e); // Log the original error for debugging
+        return { cars: [], error: parseError(e), count: 0 };
     }
 };
 
 /**
  * Deletes a car and its associated images from storage.
  */
-export const deleteCar = async (car: Car) => {
+export const deleteCar = async (car: Car): Promise<{ error: string | null }> => {
     try {
+        // Delete images from storage first
         if (car.imagePaths && car.imagePaths.length > 0) {
-            const pathsToDelete = car.imagePaths.filter(p => typeof p === 'string' && p.trim() !== '');
-            if (pathsToDelete.length > 0) {
-                const { error: storageError } = await supabase.storage.from('cars-photos').remove(pathsToDelete);
-                if (storageError) throw new Error(`Failed to delete car images: ${storageError.message}`);
+            const { error: storageError } = await supabase.storage
+                .from(CARS_PHOTOS_BUCKET)
+                .remove(car.imagePaths);
+            if (storageError) {
+                // Log the error but proceed to delete the DB record anyway.
+                console.warn(`Could not delete images for car ${car.id}:`, storageError.message);
             }
         }
-        
+        // Then delete the car record from the database
         const { error: dbError } = await supabase.from('cars').delete().eq('id', car.id);
-        if (dbError) throw new Error(`Failed to delete the car record: ${dbError.message}`);
-        
+        if (dbError) throw dbError;
+
         return { error: null };
-    } catch (err: any) {
-        console.error('Delete car error:', err);
-        return { error: err.message || 'An unexpected error occurred during deletion.' };
+    } catch (err: unknown) {
+        return { error: parseError(err) };
     }
+};
+
+/**
+ * Updates a car's 'available' status.
+ */
+export const updateCarAvailability = async (carId: string, available: boolean): Promise<{ error: string | null }> => {
+    try {
+        const { error } = await supabase.from('cars').update({ available }).eq('id', carId);
+        if (error) throw error;
+        return { error: null };
+    } catch (err: unknown) {
+        return { error: parseError(err) };
+    }
+};
+
+
+/**
+ * Creates or updates a car record and handles image uploads/deletions while preserving order.
+ */
+export const upsertCar = async (formData: CarFormData, images: ImageState[], existingCar: Car | null): Promise<{ car: Car | null; error: string | null }> => {
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error('User not authenticated');
+
+    // --- 1. Handle Image Deletions ---
+    if (existingCar) {
+      const existingImagePathsInForm = images
+        .filter(img => img.type === 'existing')
+        .map(img => (img as Extract<ImageState, { type: 'existing' }>).path);
+
+      const imagesToDelete = existingCar.imagePaths.filter(
+        path => !existingImagePathsInForm.includes(path)
+      );
+      
+      if (imagesToDelete.length > 0) {
+        await supabase.storage.from(CARS_PHOTOS_BUCKET).remove(imagesToDelete);
+      }
+    }
+    
+    // --- 2. Handle New Image Uploads ---
+    const newImagesToUpload = images.filter(img => img.type === 'new') as Extract<ImageState, { type: 'new' }>[];
+    
+    const uploadPromises = newImagesToUpload.map(img => {
+      const filePath = `${user.id}/${Date.now()}-${img.file.name}`;
+      return supabase.storage.from(CARS_PHOTOS_BUCKET).upload(filePath, img.file)
+        .then(({ data, error }) => {
+          if (error) throw new Error(`Image upload for ${img.file.name} failed: ${error.message}`);
+          // Return a mapping from the original file object to the new path
+          return { file: img.file, path: data.path };
+        });
+    });
+
+    const uploadedImageMappings = await Promise.all(uploadPromises);
+    const filePathMap = new Map(uploadedImageMappings.map(item => [item.file, item.path]));
+
+    // --- 3. Construct Final Ordered Image Path Array ---
+    const finalImagePaths = images.map(img => {
+      if (img.type === 'existing') {
+        return img.path;
+      }
+      return filePathMap.get(img.file);
+    }).filter((path): path is string => !!path); // Ensure no undefineds
+
+    // --- 4. Upsert Car Data ---
+    const carDataToSave = {
+      id: existingCar?.id,
+      title: formData.title,
+      make: formData.make,
+      model: formData.model,
+      year: formData.year,
+      seats: formData.seats,
+      fuel_type: formData.fuelType,
+      transmission: formData.transmission,
+      price_per_day: formData.pricePerDay,
+      verified: true, // All cars are now verified by default.
+      status: formData.status,
+      image_paths: finalImagePaths,
+      // The 'updated_at' field is now managed by the database trigger
+    };
+
+    const { data, error } = await supabase.from('cars').upsert(carDataToSave).select().single();
+    if (error) throw error;
+
+    return { car: data as Car, error: null };
+  } catch (err: unknown) {
+    return { car: null, error: parseError(err) };
+  }
 };

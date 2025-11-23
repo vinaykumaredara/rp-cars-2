@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import type { Car, BookingDraft, DatesData } from '../../types';
+import type { Car, BookingDraft } from '../../types';
+import { calculateBookingPrice } from '../../lib/bookingUtils';
 
 interface DatesStepProps {
   car: Car;
@@ -18,7 +19,6 @@ const DatesStep: React.FC<DatesStepProps> = ({ car, bookingData, updateBookingDa
   }, [today]);
 
   const formatDate = (date: Date) => date.toISOString().split('T')[0];
-  const formatTime = (date: Date) => date.toTimeString().split(' ')[0].substring(0, 5); // HH:MM
 
   const [pickupDate, setPickupDate] = useState(bookingData.datesData?.pickupDate || formatDate(today));
   const [pickupTime, setPickupTime] = useState(bookingData.datesData?.pickupTime || '09:00');
@@ -40,28 +40,11 @@ const DatesStep: React.FC<DatesStepProps> = ({ car, bookingData, updateBookingDa
     }
   }, [bookingData.datesData, today, tomorrow, updateBookingData]);
 
-  const billingDays = useMemo(() => {
-    if (!pickupDate || !pickupTime || !returnDate || !returnTime) return 0;
-
-    const start = new Date(`${pickupDate}T${pickupTime}`);
-    const end = new Date(`${returnDate}T${returnTime}`);
-
-    if (isNaN(start.getTime()) || isNaN(end.getTime()) || end <= start) return 0;
-
-    const diffMs = end.getTime() - start.getTime();
-    const diffHours = diffMs / (1000 * 60 * 60);
-
-    if (diffHours < 12) {
-      return 0; // Will be caught by validation
-    }
-
-    // Calculate billing units based on 12-hour blocks
-    const billingUnits = Math.ceil(diffHours / 12);
-    // Each unit is 0.5 days
-    return billingUnits / 2;
-  }, [pickupDate, pickupTime, returnDate, returnTime]);
-  
-  const totalPrice = car ? billingDays * car.pricePerDay : 0;
+  const { billingDays, totalAmount } = useMemo(() => {
+    const dates = { pickupDate, pickupTime, returnDate, returnTime };
+    const { billingDays, totalAmount } = calculateBookingPrice(dates, undefined, car.pricePerDay);
+    return { billingDays, totalAmount };
+  }, [pickupDate, pickupTime, returnDate, returnTime, car.pricePerDay]);
 
   const handleNext = () => {
     // Basic validation
@@ -83,13 +66,10 @@ const DatesStep: React.FC<DatesStepProps> = ({ car, bookingData, updateBookingDa
       return;
     }
     
-    const diffMs = returnDateTime.getTime() - startDateTime.getTime();
-    const diffHours = diffMs / (1000 * 60 * 60);
-    if (diffHours < 12) {
+    if (billingDays === 0) {
       setError('Minimum booking duration is 12 hours.');
       return;
     }
-
 
     setError(null);
     updateBookingData({
@@ -162,7 +142,7 @@ const DatesStep: React.FC<DatesStepProps> = ({ car, bookingData, updateBookingDa
         <div className="flex justify-between items-center text-lg">
           <span className="font-semibold text-foreground">Total Rental Price</span>
           <span className="font-bold text-primary">
-            {totalPrice > 0 ? `₹${totalPrice.toLocaleString()}` : 'Select dates'}
+            {totalAmount > 0 ? `₹${totalAmount.toLocaleString()}` : 'Select dates'}
           </span>
         </div>
         {billingDays > 0 && <p className="text-sm text-gray-600 text-right mt-1">For {billingDays} billing day(s)</p>}

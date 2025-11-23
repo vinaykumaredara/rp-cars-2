@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { fetchCurrentProfile, updateCurrentUserProfile } from '../../lib/userService';
 import { useToast } from '../../contexts/ToastContext';
@@ -11,21 +11,23 @@ const ProfileSettings: React.FC = () => {
     const [isSaving, setIsSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
-    useEffect(() => {
-        const loadProfile = async () => {
-            const { profile, error } = await fetchCurrentProfile();
-            if (error) {
-                setError(error);
-            } else if (profile) {
-                setFormData({
-                    name: profile.full_name || '',
-                    phone: profile.phone || ''
-                });
-            }
-            setIsLoading(false);
-        };
-        loadProfile();
+    const loadProfile = useCallback(async () => {
+        setIsLoading(true);
+        const { profile, error } = await fetchCurrentProfile();
+        if (error) {
+            setError(error);
+        } else if (profile) {
+            setFormData({
+                name: profile.full_name || '',
+                phone: profile.phone || ''
+            });
+        }
+        setIsLoading(false);
     }, []);
+
+    useEffect(() => {
+        loadProfile();
+    }, [loadProfile]);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value } = e.target;
@@ -40,6 +42,7 @@ const ProfileSettings: React.FC = () => {
             addToast(error, 'error');
         } else {
             addToast('Profile updated successfully!', 'success');
+            await loadProfile(); // Re-fetch profile to confirm changes
         }
         setIsSaving(false);
     };

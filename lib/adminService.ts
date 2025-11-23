@@ -1,5 +1,6 @@
 import { supabase } from './supabaseClient';
 import type { BookingDetail } from '../types';
+import { parseError } from './errorUtils';
 
 export interface DashboardStats {
   total_cars: number;
@@ -12,26 +13,16 @@ export const fetchDashboardStats = async (): Promise<{ stats: DashboardStats | n
     const { data, error } = await supabase.rpc('get_dashboard_stats');
 
     if (error) {
-      console.error('Error fetching dashboard stats:', error);
       // Add specific error message for missing function, which guides the admin to the fix.
       if (error.code === '42883' || error.message.includes('Could not find the function')) {
           return { stats: null, error: "Backend not configured: The 'get_dashboard_stats' function is missing. Please run the setup script from the User Management page to create it." };
       }
-      return { stats: null, error: `Failed to fetch dashboard stats: ${error.message}` };
+      throw error;
     }
 
     return { stats: data, error: null };
-  } catch (e) {
-    console.error('Unhandled error in fetchDashboardStats:', e);
-    let errorMessage = 'An unknown error occurred while fetching dashboard stats.';
-    if (e instanceof Error) {
-        errorMessage = e.message;
-    } else if (typeof e === 'object' && e !== null && 'message' in e && typeof (e as { message: unknown }).message === 'string') {
-        errorMessage = (e as { message: string }).message;
-    } else if (typeof e === 'string') {
-        errorMessage = e;
-    }
-    return { stats: null, error: errorMessage };
+  } catch (e: unknown) {
+    return { stats: null, error: parseError(e) };
   }
 };
 
@@ -49,6 +40,8 @@ export const fetchAllBookings = async (): Promise<{ bookings: BookingDetail[]; e
         total_amount,
         status,
         hold_expires_at,
+        promo_code_id,
+        discount_amount,
         users (
           full_name,
           phone
@@ -67,10 +60,7 @@ export const fetchAllBookings = async (): Promise<{ bookings: BookingDetail[]; e
       `)
       .order('created_at', { ascending: false });
 
-    if (error) {
-      console.error('Error fetching all bookings:', error);
-      return { bookings: [], error: `Failed to fetch bookings: ${error.message}` };
-    }
+    if (error) throw error;
 
     const formattedBookings: BookingDetail[] = (data || []).map((b: any) => ({
       id: b.id,
@@ -87,19 +77,12 @@ export const fetchAllBookings = async (): Promise<{ bookings: BookingDetail[]; e
       hold_expires_at: b.hold_expires_at,
       payment_mode: b.status === 'hold' ? 'hold' : 'full', // Infer payment mode for UI
       booking_extensions: b.booking_extensions || [],
+      promo_code_id: b.promo_code_id,
+      discount_amount: b.discount_amount,
     }));
 
     return { bookings: formattedBookings, error: null };
-  } catch (e) {
-    console.error('Unhandled error in fetchAllBookings:', e);
-    let errorMessage = 'An unknown error occurred while fetching bookings.';
-    if (e instanceof Error) {
-        errorMessage = e.message;
-    } else if (typeof e === 'object' && e !== null && 'message' in e && typeof (e as { message: unknown }).message === 'string') {
-        errorMessage = (e as { message: string }).message;
-    } else if (typeof e === 'string') {
-        errorMessage = e;
-    }
-    return { bookings: [], error: errorMessage };
+  } catch (e: unknown) {
+    return { bookings: [], error: parseError(e) };
   }
 };

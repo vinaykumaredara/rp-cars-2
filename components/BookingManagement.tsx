@@ -75,7 +75,7 @@ const BookingManagement: React.FC = () => {
             <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Customer & Car</th>
             <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Booking Period</th>
             <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status & Extensions</th>
-            <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Total</th>
+            <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
           </tr>
         </thead>
         <tbody className="bg-white divide-y divide-gray-200">
@@ -107,8 +107,13 @@ const BookingManagement: React.FC = () => {
                     </div>
                 )}
               </td>
-              <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-semibold text-gray-900">
-                ₹{booking.total_amount.toLocaleString()}
+              <td className="px-6 py-4 whitespace-nowrap text-right text-sm">
+                <span className="font-semibold text-gray-900">₹{booking.total_amount.toLocaleString()}</span>
+                {booking.discount_amount && booking.discount_amount > 0 && (
+                    <div className="text-xs text-green-600">
+                        (Discount: ₹{booking.discount_amount.toLocaleString()})
+                    </div>
+                )}
               </td>
             </tr>
           ))}

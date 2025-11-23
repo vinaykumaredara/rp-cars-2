@@ -1,7 +1,8 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
-import { supabase } from '../lib/supabaseClient';
+import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import { supabase, isSupabaseConfigured } from '../lib/supabaseClient';
 import type { Session, User, Role } from '../types';
-import type { AuthError, AuthResponse, OAuthResponse, SignInWithPasswordCredentials, SignUpWithPasswordCredentials } from '@supabase/supabase-js';
+import type { AuthResponse, OAuthResponse, SignInWithPasswordCredentials, SignUpWithPasswordCredentials } from '@supabase/supabase-js';
+import { useToast } from './ToastContext';
 
 interface AuthContextType {
   session: Session | null;
@@ -10,7 +11,7 @@ interface AuthContextType {
   loading: boolean;
   signIn: (credentials: SignInWithPasswordCredentials) => Promise<AuthResponse>;
   signUp: (credentials: SignUpWithPasswordCredentials) => Promise<AuthResponse>;
-  signOut: () => Promise<{ error: AuthError | null }>;
+  signOut: () => Promise<void>;
   signInWithGoogle: () => Promise<OAuthResponse>;
 }
 
@@ -21,8 +22,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<User | null>(null);
   const [role, setRole] = useState<Role | null>(null);
   const [loading, setLoading] = useState(true);
+  const { addToast } = useToast();
 
   useEffect(() => {
+    // If Supabase is not configured, do not attempt to interact with it.
+    // Set loading to false so the App component can render the configuration error message.
+    if (!isSupabaseConfigured) {
+        setLoading(false);
+        return;
+    }
+
     const getSessionAndRole = async () => {
       const { data: { session }, error: sessionError } = await supabase.auth.getSession();
       setSession(session);
@@ -81,6 +90,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, []);
 
+  const signOut = useCallback(async () => {
+    try {
+        const { error } = await supabase.auth.signOut();
+        if (error) {
+            throw error;
+        }
+        // The onAuthStateChange listener will handle clearing the session/user state.
+        // We just need to navigate the user and provide feedback.
+        window.location.hash = '#/';
+        addToast('You have been successfully signed out.', 'success');
+    } catch (error: any) {
+        console.error('Error signing out:', error);
+        addToast(`Sign out failed: ${error.message || 'Unknown error'}`, 'error');
+        // As a safety measure, still attempt to navigate home.
+        window.location.hash = '#/';
+    }
+  }, [addToast]);
+
   const value: AuthContextType = {
     session,
     user,
@@ -92,11 +119,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     signUp: (credentials: SignUpWithPasswordCredentials): Promise<AuthResponse> => {
         return supabase.auth.signUp(credentials);
     },
-    signOut: () => {
-        setRole(null); // Clear role on sign out
-        window.location.hash = '#/'; // Redirect to home on sign out
-        return supabase.auth.signOut();
-    },
+    signOut,
     signInWithGoogle: (): Promise<OAuthResponse> => {
         // IMPORTANT FOR PRODUCTION DEPLOYMENT:
         // For Google OAuth to redirect back to your app correctly, you must configure

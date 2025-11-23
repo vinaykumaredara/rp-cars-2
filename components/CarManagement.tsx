@@ -1,30 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabaseClient';
-import { fetchCarsFromDB, deleteCar, updateCarAvailability } from '../lib/carService';
+import { fetchCarsFromDB, deleteCar, updateCarAvailability, getCarImageUrl } from '../lib/carService';
 import type { Car } from '../types';
 import CarFormModal from './CarFormModal';
 import ConfirmationModal from './ConfirmationModal';
 import AdminPageLayout from './AdminPageLayout';
 import { useToast } from '../contexts/ToastContext';
-
-const ToggleSwitch: React.FC<{
-  checked: boolean;
-  onChange: () => void;
-  disabled?: boolean;
-}> = ({ checked, onChange, disabled }) => {
-  return (
-    <label className="inline-flex items-center cursor-pointer">
-      <input
-        type="checkbox"
-        checked={checked}
-        onChange={onChange}
-        disabled={disabled}
-        className="sr-only peer"
-      />
-      <div className={`relative w-11 h-6 bg-gray-200 rounded-full peer peer-focus:ring-4 peer-focus:ring-blue-300 ${disabled ? 'opacity-50 cursor-not-allowed' : ''} peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary`}></div>
-    </label>
-  );
-};
+import ToggleSwitch from './common/ToggleSwitch';
 
 const CarManagement: React.FC = () => {
   const [cars, setCars] = useState<Car[]>([]);
@@ -42,7 +24,7 @@ const CarManagement: React.FC = () => {
 
   const refreshCars = useCallback(async () => {
     setIsLoading(true);
-    const { cars, error } = await fetchCarsFromDB();
+    const { cars, error } = await fetchCarsFromDB({ adminView: true });
     setCars(cars);
     setError(error);
     setIsLoading(false);
@@ -106,13 +88,22 @@ const CarManagement: React.FC = () => {
     if (error) {
       addToast(`Failed to update status: ${error}`, 'error');
     } else {
-      addToast(`Car is now ${newAvailability ? 'available' : 'unavailable'}`, 'success');
+      addToast(`Car is now ${newAvailability ? 'available' : 'unavailable'} for booking`, 'success');
+      // Update local state for immediate feedback
+      setCars(prevCars =>
+        prevCars.map(c =>
+          c.id === car.id ? { ...c, available: newAvailability } : c
+        )
+      );
     }
     setProcessingToggleId(null);
   };
 
   const handleSave = () => {
     setIsModalOpen(false);
+    // Explicitly refresh the car list to ensure UI is updated instantly,
+    // rather than waiting for the real-time subscription which can have a delay.
+    refreshCars();
   };
   
   const handleCloseModal = () => {
@@ -148,7 +139,15 @@ const CarManagement: React.FC = () => {
                         <div key={car.id} className="p-4 border rounded-lg flex flex-col md:flex-row items-start gap-4">
                             <div className="w-full md:w-1/3">
                                 <h3 className="text-lg font-bold">{car.title} ({car.year})</h3>
-                                <p className="text-sm text-gray-500">Price: ₹{car.pricePerDay}/day</p>
+                                <div className="text-sm text-gray-600 mt-1 space-y-0.5">
+                                    <p><span className="font-semibold">Price:</span> ₹{car.pricePerDay}/day</p>
+                                    <p><span className="font-semibold">Details:</span> {car.seats} Seats, {car.fuelType}, {car.transmission}</p>
+                                    <p><span className="font-semibold">Status:</span> 
+                                        <span className={`capitalize font-medium ml-1 ${car.status === 'published' ? 'text-green-700' : 'text-yellow-700'}`}>
+                                            {car.status}
+                                        </span>
+                                    </p>
+                                </div>
                                 <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2">
                                     <button
                                         onClick={() => handleEditCar(car)}
@@ -171,18 +170,32 @@ const CarManagement: React.FC = () => {
                                             disabled={isProcessing || processingToggleId === car.id}
                                         />
                                         <span className={`text-sm font-medium ${car.available ? 'text-green-600' : 'text-gray-500'}`}>
-                                            {processingToggleId === car.id ? 'Updating...' : (car.available ? 'Available' : 'Unavailable')}
+                                            {processingToggleId === car.id ? 'Updating...' : (car.available ? 'Available for booking' : 'Unavailable')}
                                         </span>
                                     </div>
                                 </div>
                             </div>
                             <div className="w-full md:w-2/3">
-                                <h4 className="text-sm font-semibold mb-2">Images ({car.images.length})</h4>
-                                {car.images.length > 0 ? (
+                                <h4 className="text-sm font-semibold mb-2">Images ({car.imagePaths.length})</h4>
+                                {car.imagePaths.length > 0 ? (
                                     <div className="flex overflow-x-auto space-x-2 pb-2">
-                                        {car.images.map((imgSrc, index) => (
-                                            <img key={index} src={imgSrc} alt={`${car.title} ${index + 1}`} className="w-32 h-20 object-cover rounded-md flex-shrink-0" />
-                                        ))}
+                                        {car.imagePaths.map((path) => {
+                                            const thumbnailUrl = getCarImageUrl(path, { width: 128, height: 80, resize: 'cover', quality: 70 });
+                                            return (
+                                                <img 
+                                                    key={path} 
+                                                    src={thumbnailUrl} 
+                                                    alt={`${car.title} thumbnail`} 
+                                                    className="w-32 h-20 object-cover rounded-md flex-shrink-0 bg-gray-200"
+                                                    onError={(e) => {
+                                                        const target = e.target as HTMLImageElement;
+                                                        target.onerror = null; // Prevent infinite loop if placeholder fails
+                                                        // Use a simple, inline SVG placeholder to avoid another network request and ensure stability.
+                                                        target.src = "data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 128 80'%3E%3Crect width='128' height='80' fill='%23e5e7eb'/%3E%3Ctext x='50%25' y='50%25' fill='%239ca3af' font-family='sans-serif' font-size='10' text-anchor='middle' dominant-baseline='middle'%3EError%3C/text%3E%3C/svg%3E";
+                                                    }}
+                                                />
+                                            );
+                                        })}
                                     </div>
                                 ) : (
                                     <p className="text-sm text-gray-400">No images uploaded.</p>

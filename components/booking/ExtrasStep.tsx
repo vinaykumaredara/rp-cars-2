@@ -1,5 +1,9 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import type { Car, BookingDraft, BookingExtra, DatesData } from '../../types';
+import React, { useState, useMemo } from 'react';
+import type { Car, BookingDraft, BookingExtra, ValidatedPromo } from '../../types';
+import { calculateBookingPrice } from '../../lib/bookingUtils';
+import { validatePromoCode } from '../../lib/promoService';
+import { useToast } from '../../contexts/ToastContext';
+import { parseError } from '../../lib/errorUtils';
 
 interface ExtrasStepProps {
   car: Car;
@@ -10,7 +14,6 @@ interface ExtrasStepProps {
 }
 
 const defaultExtras: BookingExtra[] = [
-  { name: 'Driver', pricePerDay: 500, selected: false },
   { name: 'GPS', pricePerDay: 200, selected: false },
   { name: 'Child Seat', pricePerDay: 150, selected: false },
   { name: 'Insurance', pricePerDay: 300, selected: false },
@@ -20,34 +23,25 @@ const ExtrasStep: React.FC<ExtrasStepProps> = ({ car, bookingData, updateBooking
   const [extras, setExtras] = useState<BookingExtra[]>(bookingData.extrasData?.extras || defaultExtras);
   const [advancePaymentOptionSelected, setAdvancePaymentOptionSelected] = useState(bookingData.extrasData?.advancePaymentOptionSelected || false);
 
-  const { datesData } = bookingData;
+  const [promoCodeInput, setPromoCodeInput] = useState(bookingData.promoCodeInput || '');
+  const [isApplyingPromo, setIsApplyingPromo] = useState(false);
+  const { addToast } = useToast();
 
-  const billingDays = useMemo(() => {
-    if (!datesData) return 0;
-    const { pickupDate, pickupTime, returnDate, returnTime } = datesData;
-    const start = new Date(`${pickupDate}T${pickupTime}`);
-    const end = new Date(`${returnDate}T${returnTime}`);
-    if (isNaN(start.getTime()) || isNaN(end.getTime()) || end <= start) return 0;
-    
-    const diffMs = end.getTime() - start.getTime();
-    const diffHours = diffMs / (1000 * 60 * 60);
-
-    if (diffHours < 12) return 0; // Should be handled by previous step
-
-    const billingUnits = Math.ceil(diffHours / 12);
-    return billingUnits / 2;
-  }, [datesData]);
-
-  const baseRentalPrice = car ? billingDays * car.pricePerDay : 0;
-  const selectedExtrasPrice = useMemo(() => {
-    return extras.reduce((sum, extra) => sum + (extra.selected ? extra.pricePerDay * billingDays : 0), 0);
-  }, [extras, billingDays]);
-
-  const serviceChargeRate = 0.05; // 5%
-  const serviceCharge = (baseRentalPrice + selectedExtrasPrice) * serviceChargeRate;
+  const { datesData, appliedPromo } = bookingData;
   
-  const totalAmount = baseRentalPrice + selectedExtrasPrice + serviceCharge;
-  const advanceAmount = totalAmount * 0.10; // 10% for advance booking
+  const { 
+    billingDays, 
+    baseRentalPrice, 
+    selectedExtrasPrice,
+    subtotal,
+    discountAmount,
+    serviceCharge, 
+    totalAmount, 
+    advanceAmount 
+  } = useMemo(() => {
+      const extrasDataForCalc = { extras };
+      return calculateBookingPrice(datesData, extrasDataForCalc, car.pricePerDay, appliedPromo);
+  }, [datesData, extras, car.pricePerDay, appliedPromo]);
 
   const handleExtraToggle = (index: number) => {
     setExtras(prev => prev.map((extra, i) => 
@@ -55,12 +49,53 @@ const ExtrasStep: React.FC<ExtrasStepProps> = ({ car, bookingData, updateBooking
     ));
   };
 
+  const handleApplyPromo = async () => {
+    if (!promoCodeInput.trim()) {
+        addToast('Please enter a promo code.', 'error');
+        return;
+    }
+    setIsApplyingPromo(true);
+
+    try {
+        const { data, error } = await validatePromoCode(promoCodeInput.trim());
+        if (error) {
+            addToast(parseError(error), 'error');
+            updateBookingData({ appliedPromo: null });
+            return;
+        }
+        
+        if (data?.valid === true) {
+            const promo = data as ValidatedPromo;
+            updateBookingData({ appliedPromo: promo });
+            const tempDiscount = calculateBookingPrice(datesData, {extras}, car.pricePerDay, promo).discountAmount;
+            addToast(`Success! A discount of ₹${tempDiscount.toFixed(2)} has been applied.`, 'success');
+        } else {
+            addToast(data?.message ?? 'Invalid promo code.', 'error');
+            updateBookingData({ appliedPromo: null });
+        }
+    } catch (e: any) {
+        addToast(parseError(e), 'error');
+        updateBookingData({ appliedPromo: null });
+    } finally {
+        setIsApplyingPromo(false);
+    }
+  };
+  
+  const handleRemovePromo = () => {
+      setPromoCodeInput('');
+      updateBookingData({ promoCodeInput: '', appliedPromo: null });
+  }
+
   const handleNext = () => {
+    // Explicitly pass the appliedPromo from the component's current props
+    // to ensure it's included in the state update, preventing it from being lost.
     updateBookingData({ 
       extrasData: {
         extras,
         advancePaymentOptionSelected
-      }
+      },
+      promoCodeInput,
+      appliedPromo: bookingData.appliedPromo
     });
     nextStep();
   };
@@ -86,14 +121,41 @@ const ExtrasStep: React.FC<ExtrasStepProps> = ({ car, bookingData, updateBooking
           </div>
         ))}
       </div>
+      
+      {/* Promo Code Section */}
+      <div>
+        <label htmlFor="promo-code" className="block text-sm font-medium text-gray-700 mb-1">Promo Code</label>
+        <div className="flex gap-2">
+            <input 
+                type="text" 
+                id="promo-code" 
+                value={promoCodeInput}
+                onChange={(e) => setPromoCodeInput(e.target.value.toUpperCase())}
+                placeholder="Enter promo code"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                disabled={!!appliedPromo}
+            />
+            {appliedPromo ? (
+                <button onClick={handleRemovePromo} className="px-4 py-2 text-sm bg-red-500 text-white rounded-md hover:bg-red-600">Remove</button>
+            ) : (
+                <button onClick={handleApplyPromo} disabled={!promoCodeInput || isApplyingPromo} className="px-4 py-2 bg-gray-800 text-white rounded-md hover:bg-gray-900 disabled:bg-gray-400">
+                    {isApplyingPromo ? '...' : 'Apply'}
+                </button>
+            )}
+        </div>
+      </div>
 
       <div className="bg-blue-50 p-4 rounded-lg">
         <h4 className="font-semibold text-lg text-foreground mb-2">Booking Summary</h4>
         <div className="space-y-1 text-gray-700 text-sm">
           <div className="flex justify-between"><span>Base Rental ({billingDays} billing days)</span><span>₹{baseRentalPrice.toLocaleString()}</span></div>
           <div className="flex justify-between"><span>Selected Extras</span><span>₹{selectedExtrasPrice.toLocaleString()}</span></div>
+          <div className="flex justify-between font-semibold"><span>Subtotal</span><span>₹{subtotal.toLocaleString()}</span></div>
+          {discountAmount > 0 && (
+            <div className="flex justify-between text-green-600"><span>Discount ({appliedPromo?.code})</span><span>- ₹{discountAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
+          )}
           <div className="flex justify-between"><span>Service Charge (5%)</span><span>₹{serviceCharge.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
-          <div className="flex justify-between font-bold text-base border-t border-blue-200 pt-2 mt-2"><span>Total Amount</span><span>₹{totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
+          <div className="flex justify-between font-bold text-base border-t border-blue-200 pt-2 mt-2"><span>Grand Total</span><span>₹{totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
         </div>
       </div>
 
@@ -106,7 +168,7 @@ const ExtrasStep: React.FC<ExtrasStepProps> = ({ car, bookingData, updateBooking
           className="h-4 w-4 text-primary focus:ring-primary border-gray-300 rounded"
         />
         <label htmlFor="advancePayment" className="ml-3 text-sm font-medium text-gray-900 cursor-pointer">
-          Pay 10% advance (₹{advanceAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}) to reserve now (10-minute hold)
+          Pay 10% advance (₹{advanceAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}) to reserve now
         </label>
       </div>
 

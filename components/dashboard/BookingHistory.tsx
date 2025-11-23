@@ -1,8 +1,21 @@
-import React, { useState, useEffect, Suspense, lazy } from 'react';
+import React, { useState, useEffect, Suspense, lazy, useCallback } from 'react';
 import { fetchUserBookings } from '../../lib/userService';
 import type { BookingDetail } from '../../types';
+import CarCard from '../CarCard';
+import { useAuth } from '../../contexts/AuthContext';
+import { supabase } from '../../lib/supabaseClient';
 
 const ExtendBookingModal = lazy(() => import('./ExtendBookingModal'));
+
+// Placeholder for bookings where the car has been deleted
+const DeletedCarCard: React.FC = () => (
+    <div className="bg-gray-100 rounded-lg h-full flex flex-col items-center justify-center text-center p-4 border border-gray-200">
+        <svg className="w-12 h-12 text-gray-400 mb-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+        <h4 className="font-semibold text-gray-700">Car Information Unavailable</h4>
+        <p className="text-sm text-gray-500">This car may have been removed from our fleet.</p>
+    </div>
+);
+
 
 const BookingHistory: React.FC = () => {
     const [bookings, setBookings] = useState<BookingDetail[]>([]);
@@ -10,9 +23,10 @@ const BookingHistory: React.FC = () => {
     const [error, setError] = useState<string | null>(null);
     const [isExtendModalOpen, setIsExtendModalOpen] = useState(false);
     const [selectedBooking, setSelectedBooking] = useState<BookingDetail | null>(null);
+    const { user } = useAuth();
 
-    const loadBookings = async () => {
-        setIsLoading(true);
+    const loadBookings = useCallback(async () => {
+        // Don't show loader on subsequent re-fetches from real-time updates
         const { bookings, error } = await fetchUserBookings();
         if (error) {
             setError(error);
@@ -20,11 +34,31 @@ const BookingHistory: React.FC = () => {
             setBookings(bookings);
         }
         setIsLoading(false);
-    };
+    }, []);
 
     useEffect(() => {
         loadBookings();
-    }, []);
+
+        if (!user) return;
+
+        const channel = supabase
+            .channel('user-bookings-realtime')
+            .on(
+                'postgres_changes',
+                { event: '*', schema: 'public', table: 'bookings', filter: `user_id=eq.${user.id}` },
+                () => loadBookings()
+            )
+            .on(
+                'postgres_changes',
+                { event: '*', schema: 'public', table: 'cars' },
+                () => loadBookings()
+            )
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [loadBookings, user]);
 
     const handleExtendClick = (booking: BookingDetail) => {
         setSelectedBooking(booking);
@@ -34,8 +68,7 @@ const BookingHistory: React.FC = () => {
     const handleModalClose = () => {
         setIsExtendModalOpen(false);
         setSelectedBooking(null);
-        // Refresh bookings list after modal closes to show updated end time
-        loadBookings();
+        // Data will refresh via real-time subscription, no need for manual call
     };
 
     const formatDate = (dateString: string) => new Date(dateString).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' });
@@ -95,35 +128,45 @@ const BookingHistory: React.FC = () => {
                         </a>
                     </div>
                 ) : (
-                    <div className="space-y-4">
+                    <div className="space-y-6">
                         {bookings.map(booking => {
                            const isExtendable = booking.status === 'confirmed' && new Date(booking.end_datetime) > new Date();
                            return (
-                            <div key={booking.id} className="p-4 border rounded-lg hover:shadow-sm transition-shadow">
-                                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center">
-                                    <div className="mb-2 sm:mb-0">
-                                        <h3 className="font-bold text-lg text-foreground">{booking.cars?.title}</h3>
-                                        <p className="text-sm text-gray-500">Booked on: {new Date(booking.created_at).toLocaleDateString()}</p>
-                                    </div>
-                                    {getStatusBadge(booking.status)}
-                                </div>
-                                <div className="text-sm mt-2 pt-2 border-t">
-                                    <p><strong>From:</strong> {formatDate(booking.start_datetime)}</p>
-                                    <p><strong>To:</strong> {formatDate(booking.end_datetime)}</p>
-                                    <div className="flex justify-between items-center mt-2">
-                                        <p className="text-base font-semibold">Total: ₹{Number(booking.total_amount).toLocaleString()}</p>
-                                        {isExtendable && (
-                                            <button 
-                                                onClick={() => handleExtendClick(booking)}
-                                                className="px-3 py-1 text-sm bg-blue-100 text-blue-700 rounded hover:bg-blue-200 transition"
-                                            >
-                                                Extend Booking
-                                            </button>
+                                <div key={booking.id} className="bg-white p-4 border rounded-lg hover:shadow-sm transition-shadow flex flex-col md:flex-row gap-6">
+                                    <div className="md:w-2/5 flex-shrink-0">
+                                        {booking.cars ? (
+                                            <CarCard car={booking.cars} onBookNow={() => {}} showBookingControls={false} />
+                                        ) : (
+                                            <DeletedCarCard />
                                         )}
                                     </div>
+                                    <div className="flex flex-col flex-grow">
+                                        <div className="flex justify-between items-start mb-2">
+                                            <div>
+                                                <h3 className="font-bold text-lg text-foreground">{booking.cars?.title || 'Deleted Car'}</h3>
+                                                <p className="text-sm text-gray-500">ID: #{booking.id.split('-')[0].toUpperCase()}</p>
+                                            </div>
+                                            {getStatusBadge(booking.status)}
+                                        </div>
+                                        <div className="text-sm mt-2 pt-2 border-t flex-grow space-y-1">
+                                            <p><strong>Booked on:</strong> {new Date(booking.created_at).toLocaleDateString()}</p>
+                                            <p><strong>From:</strong> {formatDate(booking.start_datetime)}</p>
+                                            <p><strong>To:</strong> {formatDate(booking.end_datetime)}</p>
+                                            {booking.discount_amount && booking.discount_amount > 0 && (
+                                                <p className="text-green-600"><strong>Discount:</strong> -₹{Number(booking.discount_amount).toLocaleString()}</p>
+                                            )}
+                                        </div>
+                                        <div className="flex justify-between items-center mt-auto pt-2 border-t">
+                                            <p className="text-base font-semibold">Total Paid: ₹{Number(booking.total_amount).toLocaleString()}</p>
+                                            {isExtendable && (
+                                                <button onClick={() => handleExtendClick(booking)} className="px-3 py-1 text-sm bg-blue-100 text-blue-700 rounded hover:bg-blue-200 transition">
+                                                    Extend Booking
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
                                 </div>
-                            </div>
-                           )
+                           );
                         })}
                     </div>
                 )}

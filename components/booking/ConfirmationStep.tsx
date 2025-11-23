@@ -1,5 +1,6 @@
-import React, { useEffect, useMemo } from 'react';
-import type { Car, BookingDraft, DatesData, ExtrasData } from '../../types';
+import React, { useMemo } from 'react';
+import type { Car, BookingDraft } from '../../types';
+import { calculateBookingPrice } from '../../lib/bookingUtils';
 
 interface ConfirmationStepProps {
   car: Car;
@@ -11,35 +12,18 @@ interface ConfirmationStepProps {
 }
 
 const ConfirmationStep: React.FC<ConfirmationStepProps> = ({ car, bookingData, onClose }) => {
-  // Derive total amounts based on bookingData for display
   const { datesData, extrasData } = bookingData;
 
-  const billingDays = useMemo(() => {
-    if (!datesData) return 0;
-    const { pickupDate, pickupTime, returnDate, returnTime } = datesData;
-    const start = new Date(`${pickupDate}T${pickupTime}`);
-    const end = new Date(`${returnDate}T${returnTime}`);
-    if (isNaN(start.getTime()) || isNaN(end.getTime()) || end <= start) return 0;
-    
-    const diffMs = end.getTime() - start.getTime();
-    const diffHours = diffMs / (1000 * 60 * 60);
+  const { totalAmount, advanceAmount } = useMemo(() => {
+    return calculateBookingPrice(datesData, extrasData, car.pricePerDay);
+  }, [datesData, extrasData, car.pricePerDay]);
 
-    if (diffHours < 12) return 0;
-
-    const billingUnits = Math.ceil(diffHours / 12);
-    return billingUnits / 2;
-  }, [datesData]);
-
-  const baseRentalPrice = car ? billingDays * car.pricePerDay : 0;
-  const selectedExtrasPrice = useMemo(() => {
-    return (extrasData?.extras || []).reduce((sum, extra) => sum + (extra.selected ? extra.pricePerDay * billingDays : 0), 0);
-  }, [extrasData, billingDays]);
-
-  const serviceChargeRate = 0.05; // 5%
-  const serviceCharge = (baseRentalPrice + selectedExtrasPrice) * serviceChargeRate;
+  const amountPaid = bookingData.paymentData?.paymentMode === 'hold' ? advanceAmount : totalAmount;
   
-  const totalAmount = baseRentalPrice + selectedExtrasPrice + serviceCharge;
-  const amountPaid = bookingData.paymentData?.paymentMode === 'hold' ? totalAmount * 0.10 : totalAmount;
+  const handleViewBookings = () => {
+    onClose();
+    window.location.hash = '#/dashboard';
+  };
 
   return (
     <div className="text-center py-8 space-y-4">
@@ -65,10 +49,14 @@ const ConfirmationStep: React.FC<ConfirmationStepProps> = ({ car, bookingData, o
         </div>
       </div>
 
-      <button onClick={onClose} className="mt-6 w-full py-3 rounded-lg bg-primary text-white font-semibold hover:bg-primary-hover transition">
-        Done
-      </button>
-      {/* TODO: Add "View Booking Details" button -> /user-dashboard */}
+      <div className="mt-6 space-y-3">
+        <button onClick={handleViewBookings} className="w-full py-3 rounded-lg bg-primary text-white font-semibold hover:bg-primary-hover transition">
+          View My Bookings
+        </button>
+        <button onClick={onClose} className="w-full py-2 rounded-lg bg-gray-200 text-gray-800 font-semibold hover:bg-gray-300 transition">
+          Done
+        </button>
+      </div>
     </div>
   );
 };

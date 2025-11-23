@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { upsertCar } from '../lib/carService';
+import { upsertCar, getCarImageUrl } from '../lib/carService';
 import type { Car, FuelType, GearType, ImageState, CarFormData } from '../types';
 import { useToast } from '../contexts/ToastContext';
 
@@ -14,16 +14,18 @@ const CarFormModal: React.FC<CarFormModalProps> = ({ isOpen, onClose, onSave, ca
   const [formData, setFormData] = useState<CarFormData>({
     title: '', make: '', model: '', year: new Date().getFullYear(),
     seats: 5, fuelType: 'Petrol', transmission: 'Manual', pricePerDay: 1000,
-    verified: false, status: 'draft',
+    verified: true, status: 'published',
   });
 
   const [images, setImages] = useState<ImageState[]>([]);
+  const [selectedPreviewIndex, setSelectedPreviewIndex] = useState(0);
   const [loading, setLoading] = useState(false);
   const { addToast } = useToast();
 
   const isEditMode = car !== null;
 
-  const resetState = useCallback(() => {
+  const resetState = useCallback(async () => {
+    setLoading(true);
     setFormData({
       title: car?.title || '',
       make: car?.make || '',
@@ -33,25 +35,28 @@ const CarFormModal: React.FC<CarFormModalProps> = ({ isOpen, onClose, onSave, ca
       fuelType: car?.fuelType || 'Petrol',
       transmission: car?.transmission || 'Manual',
       pricePerDay: car?.pricePerDay || 1000,
-      verified: car?.verified || false,
-      status: car?.status || 'draft',
+      verified: true, // Always true
+      status: car?.status || 'published',
     });
     
-    // Fix: Use a const assertion on the 'type' property. This prevents TypeScript from widening
-    // the literal 'existing' to the general type 'string', ensuring the object correctly
-    // matches the discriminated union 'ImageState'.
-    const initialImages: ImageState[] = (car?.imagePaths || []).map((path, i) => ({
-        type: 'existing' as const,
-        path: path,
-        url: car?.images[i] || '',
-    })).filter(img => img.url);
-    setImages(initialImages);
+    const imagePaths = car?.imagePaths || [];
+    if (imagePaths.length > 0) {
+        const imageStates: ImageState[] = imagePaths.map(path => ({
+            type: 'existing' as const,
+            path: path,
+            url: getCarImageUrl(path)
+        }));
+        setImages(imageStates.filter(img => img.url));
+    } else {
+        setImages([]);
+    }
     setLoading(false);
   }, [car]);
 
   useEffect(() => {
     if (isOpen) {
       resetState();
+      setSelectedPreviewIndex(0);
     } else {
       // Cleanup object URLs when modal is closed
       images.forEach(img => {
@@ -65,17 +70,12 @@ const CarFormModal: React.FC<CarFormModalProps> = ({ isOpen, onClose, onSave, ca
 
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    const { name, value, type } = e.target;
+    const { name, value } = e.target;
     
-    if (type === 'checkbox') {
-        const { checked } = e.target as HTMLInputElement;
-        setFormData(prev => ({ ...prev, [name]: checked }));
-    } else {
-        setFormData(prev => ({
-            ...prev,
-            [name]: (name === 'year' || name === 'seats' || name === 'pricePerDay') ? parseInt(value, 10) || 0 : value,
-        }));
-    }
+    setFormData(prev => ({
+        ...prev,
+        [name]: (name === 'year' || name === 'seats' || name === 'pricePerDay') ? parseInt(value, 10) || 0 : value,
+    }));
   };
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -95,7 +95,25 @@ const CarFormModal: React.FC<CarFormModalProps> = ({ isOpen, onClose, onSave, ca
     if (imageToRemove.type === 'new') {
         URL.revokeObjectURL(imageToRemove.url);
     }
-    setImages(prev => prev.filter((_, i) => i !== index));
+    setImages(prev => {
+        const newImages = prev.filter((_, i) => i !== index);
+        // Adjust selected index if needed
+        if (selectedPreviewIndex >= newImages.length) {
+            setSelectedPreviewIndex(Math.max(0, newImages.length - 1));
+        }
+        return newImages;
+    });
+  };
+
+  const setAsCover = (index: number) => {
+    if (index === 0) return; // Already the cover
+    setImages(prevImages => {
+        const newImages = [...prevImages];
+        const [itemToMove] = newImages.splice(index, 1);
+        newImages.unshift(itemToMove);
+        return newImages;
+    });
+    setSelectedPreviewIndex(0); // The new cover is now the selected preview
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -158,7 +176,7 @@ const CarFormModal: React.FC<CarFormModalProps> = ({ isOpen, onClose, onSave, ca
                 </div>
                 <div>
                     <label htmlFor="fuelType" className="block text-sm font-medium text-gray-700 mb-1">Fuel Type</label>
-                    <select name="fuelType" id="fuelType" value={formData.fuelType} onChange={handleChange} className="w-full p-2 border rounded bg-white border-gray-300 focus:ring-primary focus:border-primary">
+                    <select name="fuelType" id="fuelType" value={formData.fuelType} onChange={handleChange} className="w-full p-2 border rounded bg-white text-foreground border-gray-300 focus:ring-primary focus:border-primary">
                         <option value="Petrol">Petrol</option>
                         <option value="Diesel">Diesel</option>
                         <option value="Electric">Electric</option>
@@ -167,14 +185,14 @@ const CarFormModal: React.FC<CarFormModalProps> = ({ isOpen, onClose, onSave, ca
                 </div>
                 <div>
                     <label htmlFor="transmission" className="block text-sm font-medium text-gray-700 mb-1">Gear Type</label>
-                    <select name="transmission" id="transmission" value={formData.transmission} onChange={handleChange} className="w-full p-2 border rounded bg-white border-gray-300 focus:ring-primary focus:border-primary">
+                    <select name="transmission" id="transmission" value={formData.transmission} onChange={handleChange} className="w-full p-2 border rounded bg-white text-foreground border-gray-300 focus:ring-primary focus:border-primary">
                         <option value="Manual">Manual</option>
                         <option value="Automatic">Automatic</option>
                     </select>
                 </div>
                 <div>
                     <label htmlFor="status" className="block text-sm font-medium text-gray-700 mb-1">Status</label>
-                    <select name="status" id="status" value={formData.status} onChange={handleChange} className="w-full p-2 border rounded bg-white border-gray-300 focus:ring-primary focus:border-primary">
+                    <select name="status" id="status" value={formData.status} onChange={handleChange} className="w-full p-2 border rounded bg-white text-foreground border-gray-300 focus:ring-primary focus:border-primary">
                         <option value="draft">Draft</option>
                         <option value="published">Published</option>
                         <option value="active">Active</option>
@@ -183,33 +201,71 @@ const CarFormModal: React.FC<CarFormModalProps> = ({ isOpen, onClose, onSave, ca
                 </div>
             </div>
 
-            <div className="flex items-center pt-2">
-                <input type="checkbox" name="verified" id="verified" checked={formData.verified} onChange={handleChange} className="h-4 w-4 text-primary focus:ring-primary border-gray-300 rounded" />
-                <label htmlFor="verified" className="ml-2 block text-sm text-gray-900">Verified Listing</label>
-            </div>
-
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Images</label>
-              <div className="mt-2 flex flex-wrap gap-4">
-                {images.map((img, index) => (
-                  <div key={img.url} className="relative">
-                    <img src={img.url} alt={`Preview ${index}`} className="w-32 h-20 object-cover rounded-md" />
-                    <button type="button" onClick={() => removeImage(index)} className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold leading-none shadow-md">&times;</button>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Image Gallery</label>
+              <div className="mt-2 p-4 border rounded-lg bg-gray-50">
+                {/* Main Preview */}
+                <div className="w-full h-64 bg-gray-200 rounded-md mb-4 flex items-center justify-center relative">
+                  {images.length > 0 && images[selectedPreviewIndex] ? (
+                    <img src={images[selectedPreviewIndex].url} alt="Main preview" className="w-full h-full object-contain rounded-md" />
+                  ) : (
+                    <div className="text-center text-gray-500">
+                      <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                      <p className="mt-2 text-sm">Upload images to see a preview</p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Thumbnails */}
+                {images.length > 0 && (
+                  <div className="flex overflow-x-auto space-x-3 pb-2 -mx-2 px-2">
+                    {images.map((img, index) => (
+                      <div
+                        key={img.url}
+                        onClick={() => setSelectedPreviewIndex(index)}
+                        className={`relative flex-shrink-0 w-24 h-16 rounded-md cursor-pointer border-2 ${selectedPreviewIndex === index ? 'border-primary' : 'border-transparent'} overflow-hidden group`}
+                      >
+                        <img src={img.url} alt={`Thumbnail ${index}`} className="w-full h-full object-cover" />
+                        <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-50 transition-all flex items-center justify-center space-x-2">
+                          {index !== 0 && (
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); setAsCover(index); }}
+                              title="Set as cover image"
+                              className="text-white opacity-0 group-hover:opacity-100 transition-opacity p-1 bg-black bg-opacity-60 rounded-full hover:bg-opacity-80"
+                            >
+                              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" /></svg>
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); removeImage(index); }}
+                            title="Remove image"
+                            className="text-white opacity-0 group-hover:opacity-100 transition-opacity p-1 bg-red-600 bg-opacity-70 rounded-full hover:bg-opacity-90"
+                          >
+                            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002 2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" /></svg>
+                          </button>
+                        </div>
+                        {index === 0 && (
+                          <div className="absolute top-1 left-1 bg-yellow-400 text-black text-xs font-bold px-1.5 py-0.5 rounded-sm shadow">Cover</div>
+                        )}
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-              <div className="mt-4">
-                <label htmlFor="image-upload" className="cursor-pointer inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
-                    <svg className="w-5 h-5 mr-2 text-gray-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM6.293 6.707a1 1 0 010-1.414l3-3a1 1 0 011.414 0l3 3a1 1 0 01-1.414 1.414L11 5.414V13a1 1 0 11-2 0V5.414L7.707 6.707a1 1 0 01-1.414 0z" clipRule="evenodd"></path></svg>
-                    Upload Images
-                </label>
-                <input type="file" id="image-upload" multiple accept="image/*" onChange={handleImageChange} className="hidden" />
+                )}
+                <div className="mt-4">
+                  <label htmlFor="image-upload" className="cursor-pointer inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
+                      <svg className="w-5 h-5 mr-2 text-gray-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM6.293 6.707a1 1 0 010-1.414l3-3a1 1 0 011.414 0l3 3a1 1 0 01-1.414 1.414L11 5.414V13a1 1 0 11-2 0V5.414L7.707 6.707a1 1 0 01-1.414 0z" clipRule="evenodd"></path></svg>
+                      Upload Images
+                  </label>
+                  <input type="file" id="image-upload" multiple accept="image/*" onChange={handleImageChange} className="hidden" />
+                </div>
               </div>
             </div>
           </div>
           
           <div className="p-6 sticky bottom-0 bg-white border-t z-10 flex justify-end space-x-4">
-            <button type="button" onClick={onClose} className="px-4 py-2 rounded border border-gray-300 hover:bg-gray-100 transition">Cancel</button>
+            <button type="button" onClick={onClose} className="px-4 py-2 rounded border border-gray-300 text-gray-700 bg-white hover:bg-gray-100 transition">Cancel</button>
             <button type="submit" disabled={loading} className="px-4 py-2 rounded bg-primary text-white hover:bg-primary-hover transition disabled:opacity-50 disabled:cursor-not-allowed">
                 {loading ? 'Saving...' : 'Save Changes'}
             </button>

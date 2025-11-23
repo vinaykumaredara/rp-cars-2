@@ -71,7 +71,33 @@ const Header: React.FC<HeaderProps> = ({ onSignInClick }) => {
   return (
     <header className="bg-white shadow-md sticky top-0 z-50">
       <div className="container mx-auto px-4 py-4 flex justify-between items-center">
-        <a href="#/" onClick={(e) => handleNavigate(e, '#/')} className="text-2xl font-bold text-foreground">RP CARS</a>
+        <a href="#/" onClick={(e) => handleNavigate(e, '#/')} aria-label="RP Cars Home">
+            {/* New Animated SVG Logo */}
+            <svg viewBox="0 0 205 50" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" className="h-9 w-auto">
+                <defs>
+                    <linearGradient id="logo-anim-gradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                        <stop offset="0%" stopColor="#6366F1"/>
+                        <stop offset="50%" stopColor="#8B5CF6"/>
+                        <stop offset="100%" stopColor="#6366F1"/>
+                    </linearGradient>
+                </defs>
+                <g className="logo-animation-paths" fill="transparent" stroke="url(#logo-anim-gradient)" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round">
+                    {/* R */}
+                    <path d="M10 40 V 10 H 25 C 40 10, 40 25, 25 25 H 10 M 25 25 L 40 40"/>
+                    {/* P */}
+                    <path d="M50 40 V 10 H 65 C 80 10, 80 25, 65 25 H 50"/>
+                    {/* C */}
+                    <path d="M100 40 C 85 40, 85 10, 100 10"/>
+                    {/* A */}
+                    <path d="M115 40 L 125 10 L 135 40 M 118 30 H 132"/>
+                    {/* R */}
+                    <path d="M145 40 V 10 H 160 C 175 10, 175 25, 160 25 H 145 M 160 25 L 175 40"/>
+                    {/* S */}
+                    <path d="M195 10 C 180 10, 180 25, 190 25 C 200 25, 200 40, 185 40"/>
+                </g>
+            </svg>
+            <span className="sr-only">RP CARS</span> {/* For accessibility */}
+        </a>
 
         <nav className="hidden lg:flex items-center space-x-8">
           {navLinks.map(link => (

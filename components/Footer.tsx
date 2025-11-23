@@ -56,7 +56,7 @@ const Footer: React.FC = () => {
             <h4 className="text-lg font-semibold mb-4">Contact Us</h4>
             <ul className="space-y-2 text-gray-400">
               <li className="flex items-start"><span className="mr-2 mt-1">📍</span><span>123 Road, Hyderabad, Telangana, India</span></li>
-              <li className="flex items-start"><span className="mr-2 mt-1">📧</span><span>contact@rpcars.info</span></li>
+              <li className="flex items-start"><span className="mr-2 mt-1">📧</span><span>rpcars2025@gmail.com</span></li>
               <li className="flex items-start"><span className="mr-2 mt-1">📞</span><span>+91 8897072640</span></li>
             </ul>
           </div>

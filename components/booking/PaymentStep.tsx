@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { createBookingAndPayment } from '../../lib/bookingService';
 import type { Car, BookingDraft } from '../../types';
 import { useAuth } from '../../contexts/AuthContext';
+import { calculateBookingPrice } from '../../lib/bookingUtils';
 
 interface PaymentStepProps {
   car: Car;
@@ -19,29 +20,23 @@ const PaytmIcon: React.FC<{ className?: string }> = ({ className }) => (
 
 const PaymentStep: React.FC<PaymentStepProps> = ({ car, bookingData, updateBookingData, nextStep, prevStep, onClose }) => {
   const { user } = useAuth();
-  const { datesData, extrasData } = bookingData;
+  const { datesData, extrasData, appliedPromo } = bookingData;
   const [paymentProcessing, setPaymentProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const { totalAmount, amountToPay, paymentMode, billingDays, baseRentalPrice, selectedExtrasPrice, serviceCharge } = useMemo(() => {
-    if (!datesData || !extrasData) return { totalAmount: 0, amountToPay: 0, paymentMode: 'full' as const, billingDays: 0, baseRentalPrice: 0, selectedExtrasPrice: 0, serviceCharge: 0 };
-    
-    const start = new Date(`${datesData.pickupDate}T${datesData.pickupTime}`);
-    const end = new Date(`${datesData.returnDate}T${datesData.returnTime}`);
-    const diffMs = end.getTime() - start.getTime();
-    const diffHours = diffMs / (1000 * 60 * 60);
-    const billUnits = Math.ceil(diffHours / 12);
-    const days = billUnits / 2;
+  const {
+    billingDays,
+    baseRentalPrice,
+    selectedExtrasPrice,
+    subtotal,
+    discountAmount,
+    serviceCharge,
+    totalAmount,
+    advanceAmount,
+  } = useMemo(() => calculateBookingPrice(datesData, extrasData, car.pricePerDay, appliedPromo), [car, datesData, extrasData, appliedPromo]);
 
-    const basePrice = car.pricePerDay * days;
-    const extrasPrice = extrasData.extras.reduce((sum, extra) => sum + (extra.selected ? extra.pricePerDay * days : 0), 0);
-    const service = (basePrice + extrasPrice) * 0.05;
-    const total = basePrice + extrasPrice + service;
-    const mode: 'full' | 'hold' = extrasData.advancePaymentOptionSelected ? 'hold' : 'full';
-    const amount = mode === 'hold' ? total * 0.10 : total;
-
-    return { totalAmount: total, amountToPay: amount, paymentMode: mode, billingDays: days, baseRentalPrice: basePrice, selectedExtrasPrice: extrasPrice, serviceCharge: service };
-  }, [car, datesData, extrasData]);
+  const paymentMode = extrasData?.advancePaymentOptionSelected ? 'hold' : 'full';
+  const amountToPay = paymentMode === 'hold' ? advanceAmount : totalAmount;
   
   const handlePaytmPayment = async () => {
     if (!user) {
@@ -50,6 +45,9 @@ const PaymentStep: React.FC<PaymentStepProps> = ({ car, bookingData, updateBooki
     }
     setPaymentProcessing(true);
     setError(null);
+
+    // Save current booking state to session storage for potential retry
+    sessionStorage.setItem('paymentAttemptInfo', JSON.stringify({ car, bookingData }));
 
     // Step 1: Create the booking and a pending payment record
     const { data: initialData, error: creationError } = await createBookingAndPayment(
@@ -99,8 +97,12 @@ const PaymentStep: React.FC<PaymentStepProps> = ({ car, bookingData, updateBooki
         <div className="space-y-1 text-gray-700 text-sm">
           <div className="flex justify-between"><span>Base Rental ({billingDays} billing days)</span><span>₹{baseRentalPrice.toLocaleString()}</span></div>
           <div className="flex justify-between"><span>Selected Extras</span><span>₹{selectedExtrasPrice.toLocaleString()}</span></div>
+          <div className="flex justify-between font-semibold"><span>Subtotal</span><span>₹{subtotal.toLocaleString()}</span></div>
+          {discountAmount > 0 && (
+            <div className="flex justify-between text-green-600"><span>Discount ({bookingData.appliedPromo?.code})</span><span>- ₹{discountAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
+          )}
           <div className="flex justify-between"><span>Service Charge (5%)</span><span>₹{serviceCharge.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
-          <div className="flex justify-between font-bold text-base border-t border-blue-200 pt-2 mt-2"><span>Total Amount</span><span>₹{totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
+          <div className="flex justify-between font-bold text-base border-t border-blue-200 pt-2 mt-2"><span>Grand Total</span><span>₹{totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
         </div>
       </div>
 

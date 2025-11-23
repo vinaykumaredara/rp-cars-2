@@ -1,5 +1,6 @@
 import { supabase } from './supabaseClient';
 import type { License } from '../types';
+import { parseError } from './errorUtils';
 
 const BUCKET_NAME = 'license-uploads';
 
@@ -32,7 +33,6 @@ export const fetchUserLicense = async (userId: string): Promise<{ license: Licen
                     const licenseData: License = { ...data, license_image_url: '' };
                     return { license: licenseData, error: "Your license record was found, but the image file is missing. Please re-upload your license." };
                 } else {
-                    console.error(`Failed to create signed URL for ${data.storage_path}:`, signedUrlError);
                     // For other errors (like permissions), return a more generic error.
                     return { license: null, error: "There was a problem loading your license image. Please try again." };
                 }
@@ -47,9 +47,8 @@ export const fetchUserLicense = async (userId: string): Promise<{ license: Licen
         };
 
         return { license: licenseData, error: null };
-    } catch (err: any) {
-        console.error('Error fetching user license:', err);
-        return { license: null, error: err.message };
+    } catch (err: unknown) {
+        return { license: null, error: parseError(err) };
     }
 };
 
@@ -91,7 +90,6 @@ export const uploadLicense = async (userId: string, file: File): Promise<{ licen
             .createSignedUrl(dbData.storage_path, 3600);
 
         if (signedUrlError) {
-            console.error('Could not create signed URL immediately after upload:', signedUrlError);
             // Proceed without URL, UI can handle it gracefully.
         } else {
             imageUrl = signedUrlData.signedUrl;
@@ -107,9 +105,8 @@ export const uploadLicense = async (userId: string, file: File): Promise<{ licen
         };
 
         return { license: fullLicenseData, error: null };
-    } catch (err: any) {
-        console.error('Error uploading license:', err);
-        return { license: null, error: err.message };
+    } catch (err: unknown) {
+        return { license: null, error: parseError(err) };
     }
 };
 
@@ -124,7 +121,6 @@ export const fetchAllLicensesForVerification = async (): Promise<{ licenses: Lic
         const { data: rpcData, error: rpcError } = await supabase.rpc('get_licenses_for_verification');
 
         if (rpcError) {
-            console.error('Error calling get_licenses_for_verification RPC:', rpcError);
             if (rpcError.code === '42883' || rpcError.message.includes('Could not find the function')) {
                 return { licenses: [], error: "Backend not configured: The 'get_licenses_for_verification' function is missing. Please run the setup script." };
             }
@@ -151,8 +147,7 @@ export const fetchAllLicensesForVerification = async (): Promise<{ licenses: Lic
                         if (signedUrlError.message.toLowerCase().includes('object not found')) {
                            // The file is missing in storage, imageUrl will remain empty.
                         } else {
-                            // Log other errors (e.g., RLS issues) for admin debugging.
-                            console.error(`Failed to create signed URL for ${item.storage_path}:`, signedUrlError);
+                            // Silently fail on other errors to avoid breaking the entire list.
                         }
                     } else if (signedUrlData && signedUrlData.signedUrl) {
                         imageUrl = signedUrlData.signedUrl;
@@ -163,7 +158,7 @@ export const fetchAllLicensesForVerification = async (): Promise<{ licenses: Lic
                     id: item.id,
                     user_id: item.user_id,
                     storage_path: item.storage_path,
-                    verified: false, // The RPC function only returns unverified licenses.
+                    verified: item.verified,
                     created_at: item.created_at,
                     user_name: item.user_name || null,
                     user_email: item.user_email || null,
@@ -173,9 +168,8 @@ export const fetchAllLicensesForVerification = async (): Promise<{ licenses: Lic
         );
         
         return { licenses, error: null };
-    } catch (err: any) {
-        console.error('Error fetching licenses for verification:', err);
-        return { licenses: [], error: err.message || 'An unexpected error occurred.' };
+    } catch (err: unknown) {
+        return { licenses: [], error: parseError(err) };
     }
 };
 
@@ -190,8 +184,7 @@ export const updateLicenseStatus = async (licenseId: string, verified: boolean):
             .eq('id', licenseId);
         if (error) throw error;
         return { error: null };
-    } catch (err: any) {
-        console.error('Error updating license status:', err);
-        return { error: err.message };
+    } catch (err: unknown) {
+        return { error: parseError(err) };
     }
 };

@@ -5,6 +5,8 @@ import ConfirmationModal from './ConfirmationModal';
 import { useToast } from '../contexts/ToastContext';
 import { fetchAllPromoCodes, deletePromoCode } from '../lib/promoService';
 import type { PromoCode } from '../types';
+import DatabaseSetup from './DatabaseSetup';
+import { supabase } from '../lib/supabaseClient';
 
 const PromoCodeManagement: React.FC = () => {
     const [codes, setCodes] = useState<PromoCode[]>([]);
@@ -16,16 +18,44 @@ const PromoCodeManagement: React.FC = () => {
     const [isProcessing, setIsProcessing] = useState(false);
     const { addToast } = useToast();
 
+    // Simplified refresh logic: Fetches data and updates state without managing isLoading.
+    // This makes it safe to call from anywhere without causing UI flashes.
     const refreshCodes = useCallback(async () => {
-        setIsLoading(true);
         const { codes: data, error: fetchError } = await fetchAllPromoCodes();
-        setCodes(data);
-        setError(fetchError);
-        setIsLoading(false);
+        if (fetchError) {
+            // Only update the error, don't clear existing data on a failed background refresh.
+            setError(fetchError);
+        } else {
+            setCodes(data);
+            setError(null); // Clear previous errors on a successful fetch.
+        }
     }, []);
 
+    // Effect for handling the initial data load and setting up real-time subscriptions.
     useEffect(() => {
-        refreshCodes();
+        const initialLoad = async () => {
+            setIsLoading(true);
+            await refreshCodes();
+            setIsLoading(false);
+        };
+        initialLoad();
+
+        const channel = supabase
+          .channel('promo-code-management-realtime')
+          .on(
+            'postgres_changes',
+            { event: '*', schema: 'public', table: 'promo_codes' },
+            () => {
+              // On database change, trigger a background refresh.
+              refreshCodes();
+            }
+          )
+          .subscribe();
+
+        // Cleanup subscription on component unmount.
+        return () => {
+          supabase.removeChannel(channel);
+        };
     }, [refreshCodes]);
 
     const handleAddNew = () => {
@@ -51,6 +81,7 @@ const PromoCodeManagement: React.FC = () => {
             addToast(`Failed to delete: ${deleteError}`, 'error');
         } else {
             addToast('Promo code deleted successfully!', 'success');
+            // Manually refresh for immediate UI feedback for the current user.
             await refreshCodes();
         }
         setIsProcessing(false);
@@ -58,14 +89,42 @@ const PromoCodeManagement: React.FC = () => {
         setSelectedCode(null);
     };
     
-    const handleSave = async () => {
+    // This is called by the modal on a successful save.
+    const handleSave = () => {
         setIsFormModalOpen(false);
         setSelectedCode(null);
-        await refreshCodes();
+        // Manually refresh for immediate UI feedback. The modal already shows the toast.
+        refreshCodes();
+    };
+
+    const formatDate = (dateString: string | null) => {
+        if (!dateString) return 'N/A';
+        return new Date(dateString).toLocaleDateString('en-CA');
+    };
+
+    const displayDiscount = (code: PromoCode) => {
+        if (code.discount_percent) {
+            return `${code.discount_percent}%`;
+        }
+        if (code.discount_flat) {
+            return `₹${Number(code.discount_flat).toLocaleString('en-IN')}`;
+        }
+        return 'N/A';
     };
 
     const renderContent = () => {
         if (isLoading) return <p className="text-center p-8">Loading promo codes...</p>;
+        
+        // More robust check for setup errors. It now catches missing tables, columns, or functions.
+        const needsSetup = error && (
+            error.includes('does not exist') || // Generic check for missing schema objects
+            error.includes('Backend not configured')
+        );
+        
+        if (needsSetup) {
+            return <DatabaseSetup />;
+        }
+        
         if (error) return <div className="bg-red-100 p-4 rounded-md text-red-700">{error}</div>;
         if (codes.length === 0) return <p className="text-center p-8">No promo codes found.</p>;
         
@@ -77,7 +136,7 @@ const PromoCodeManagement: React.FC = () => {
                             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Code</th>
                             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Discount</th>
                             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Usage</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Expires</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Validity</th>
                             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
                             <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Actions</th>
                         </tr>
@@ -85,13 +144,17 @@ const PromoCodeManagement: React.FC = () => {
                     <tbody className="bg-white divide-y divide-gray-200">
                         {codes.map(code => (
                             <tr key={code.id}>
-                                <td className="px-6 py-4 whitespace-nowrap font-mono font-bold">{code.code}</td>
-                                <td className="px-6 py-4 whitespace-nowrap">{code.discount_percentage}%</td>
-                                <td className="px-6 py-4 whitespace-nowrap">{code.uses} / {code.max_uses || '∞'}</td>
-                                <td className="px-6 py-4 whitespace-nowrap">{code.expires_at ? new Date(code.expires_at).toLocaleDateString() : 'Never'}</td>
+                                <td className="px-6 py-4 whitespace-nowrap font-mono font-bold text-sm text-gray-900">{code.code}</td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                    {displayDiscount(code)}
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{code.times_used} / {code.usage_limit || '∞'}</td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                    {formatDate(code.valid_from)} to {formatDate(code.valid_to)}
+                                </td>
                                 <td className="px-6 py-4 whitespace-nowrap">
-                                    <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${code.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-                                        {code.is_active ? 'Active' : 'Inactive'}
+                                    <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${code.active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                                        {code.active ? 'Active' : 'Inactive'}
                                     </span>
                                 </td>
                                 <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2">

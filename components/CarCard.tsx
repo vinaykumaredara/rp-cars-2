@@ -1,10 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import type { Car } from '../types';
 import { SeatIcon, FuelIcon, GearIcon } from '../constants';
+import { getCarImageUrl } from '../lib/carService';
+import { useIntersectionObserver } from '../lib/useIntersectionObserver';
 
 interface CarCardProps {
   car: Car;
   onBookNow: (car: Car) => void;
+  showBookingControls?: boolean;
 }
 
 // A simple icon for the image placeholder
@@ -18,23 +21,64 @@ const WhatsAppIcon: React.FC<{ className?: string }> = ({ className }) => (
     </svg>
 );
 
-
-const CarCard: React.FC<CarCardProps> = ({ car, onBookNow }) => {
+const CarCard: React.FC<CarCardProps> = ({ car, onBookNow, showBookingControls = true }) => {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  // A single state to manage the image loading lifecycle for simplicity and robustness.
+  const [imageStatus, setImageStatus] = useState<'loading' | 'loaded' | 'error'>('loading');
 
-  const hasImages = car.images && car.images.length > 0;
+  const imageContainerRef = useRef<HTMLDivElement>(null);
+  const isVisible = useIntersectionObserver(imageContainerRef, {
+    freezeOnceVisible: true,
+    rootMargin: '200px', // Start loading images 200px before they enter viewport
+  });
 
-  // Stop event propagation to prevent other card events from firing
+  // Reset image states when the car data or selected image index changes.
+  useEffect(() => {
+    setImageStatus('loading');
+  }, [car, currentImageIndex]);
+
+  interface ImageSource {
+    path: string;
+    src: string;
+    srcSet: string;
+  }
+
+  const imageSources: ImageSource[] = useMemo(() => {
+    const paths = Array.isArray(car.imagePaths)
+      ? car.imagePaths.filter(p => typeof p === 'string' && p.trim())
+      : [];
+
+    if (paths.length === 0) return [];
+    
+    // Define a set of widths for responsive images.
+    const imageWidths = [400, 800, 1200];
+
+    return paths.map(path => {
+      // Generate a `srcset` string with multiple image sizes for the browser to choose from.
+      const srcSet = imageWidths
+        .map(width => `${getCarImageUrl(path, { width, quality: 75 })} ${width}w`)
+        .join(', ');
+      
+      return {
+        path,
+        src: getCarImageUrl(path, { width: 800, quality: 75 }), // A sensible default for older browsers.
+        srcSet,
+      };
+    });
+  }, [car.imagePaths]);
+
   const handleNextImage = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!hasImages) return;
-    setCurrentImageIndex((prevIndex) => (prevIndex + 1) % car.images.length);
+    if (imageSources.length > 1) {
+      setCurrentImageIndex((prevIndex) => (prevIndex + 1) % imageSources.length);
+    }
   };
 
   const handlePrevImage = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!hasImages) return;
-    setCurrentImageIndex((prevIndex) => (prevIndex - 1 + car.images.length) % car.images.length);
+    if (imageSources.length > 1) {
+      setCurrentImageIndex((prevIndex) => (prevIndex - 1 + imageSources.length) % imageSources.length);
+    }
   };
   
   const goToImage = (e: React.MouseEvent, index: number) => {
@@ -42,67 +86,77 @@ const CarCard: React.FC<CarCardProps> = ({ car, onBookNow }) => {
     setCurrentImageIndex(index);
   }
 
+  const handleImageError = () => {
+    setImageStatus('error');
+  };
+  
+  const handleImageLoad = () => {
+    setImageStatus('loaded');
+  };
+  
+  const renderImageContent = () => {
+    const currentImageSource = imageSources[currentImageIndex];
+
+    // State 1: Error or no images available.
+    if (imageStatus === 'error' || imageSources.length === 0) {
+        return (
+            <div className="absolute inset-0 w-full h-full bg-gray-200 flex flex-col items-center justify-center text-gray-500">
+                <ImageIcon className="w-12 h-12 mb-2" />
+                <span className="text-sm font-medium">No Image Available</span>
+            </div>
+        );
+    }
+
+    // State 2: Loading or Loaded.
+    return (
+        <>
+            {/* Skeleton Loader: Shown only during the loading phase. */}
+            {imageStatus === 'loading' && (
+                <div className="absolute inset-0 w-full h-full bg-gray-300 animate-pulse" aria-hidden="true"></div>
+            )}
+            
+            {/* The actual image element: Rendered when the component is visible to start loading. */}
+            {isVisible && currentImageSource && (
+                <img
+                    key={currentImageSource.path}
+                    alt={car.title}
+                    src={currentImageSource.src}
+                    srcSet={currentImageSource.srcSet}
+                    // The `sizes` attribute is crucial for performance. It tells the browser the image's
+                    // layout size at different breakpoints, allowing it to download the smallest appropriate file.
+                    sizes="(max-width: 767px) 90vw, (max-width: 1023px) 45vw, 30vw"
+                    className={`relative w-full h-full object-cover transition-opacity duration-500 ${imageStatus === 'loaded' ? 'opacity-100' : 'opacity-0'}`}
+                    loading="lazy"
+                    onLoad={handleImageLoad}
+                    onError={handleImageError}
+                />
+            )}
+            
+            {/* Controls (Next/Prev buttons, dots): Shown only when the image is fully loaded. */}
+            {imageStatus === 'loaded' && imageSources.length > 1 && (
+                <>
+                    <button onClick={handlePrevImage} aria-label="Previous image" className="absolute left-2 top-1/2 -translate-y-1/2 bg-black bg-opacity-40 text-white p-2 rounded-full hover:bg-opacity-60 transition-all opacity-0 group-hover:opacity-100 focus:opacity-100"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7"></path></svg></button>
+                    <button onClick={handleNextImage} aria-label="Next image" className="absolute right-2 top-1/2 -translate-y-1/2 bg-black bg-opacity-40 text-white p-2 rounded-full hover:bg-opacity-60 transition-all opacity-0 group-hover:opacity-100 focus:opacity-100"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7"></path></svg></button>
+                    <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex space-x-2">
+                        {imageSources.map((source, index) => (
+                            <button key={source.path} onClick={(e) => goToImage(e, index)} aria-label={`Go to image ${index + 1}`} className={`w-2 h-2 rounded-full transition-colors ${currentImageIndex === index ? 'bg-white' : 'bg-white bg-opacity-50 hover:bg-opacity-75'}`} />
+                        ))}
+                    </div>
+                </>
+            )}
+        </>
+    );
+  };
+
   return (
     <div className="bg-white rounded-lg shadow-lg overflow-hidden flex flex-col transform hover:-translate-y-1 transition-transform duration-300 group">
-      <div className="relative bg-gray-200">
-        {hasImages ? (
-          <>
-            <img 
-              key={car.images[currentImageIndex]} // Key helps trigger CSS transitions
-              src={car.images[currentImageIndex]} 
-              alt={car.title} 
-              className="w-full h-56 object-cover transition-opacity duration-300 ease-in-out" 
-              loading="lazy"
-              width="600"
-              height="400"
-            />
-             {car.images.length > 1 && (
-              <>
-                {/* Previous Button */}
-                <button 
-                  type="button" 
-                  aria-label="Previous image" 
-                  onClick={handlePrevImage} 
-                  className="absolute left-2 top-1/2 -translate-y-1/2 bg-black bg-opacity-40 text-white p-2 rounded-full hover:bg-opacity-60 transition-all opacity-0 group-hover:opacity-100 focus:opacity-100"
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7"></path></svg>
-                </button>
-                {/* Next Button */}
-                <button 
-                  type="button" 
-                  aria-label="Next image" 
-                  onClick={handleNextImage} 
-                  className="absolute right-2 top-1/2 -translate-y-1/2 bg-black bg-opacity-40 text-white p-2 rounded-full hover:bg-opacity-60 transition-all opacity-0 group-hover:opacity-100 focus:opacity-100"
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7"></path></svg>
-                </button>
-                {/* Dots Indicator */}
-                <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex space-x-2">
-                  {car.images.map((_, index) => (
-                    <button 
-                      key={index}
-                      type="button"
-                      aria-label={`Go to image ${index + 1}`}
-                      onClick={(e) => goToImage(e, index)}
-                      className={`w-2 h-2 rounded-full transition-colors ${currentImageIndex === index ? 'bg-white' : 'bg-white bg-opacity-50 hover:bg-opacity-75'}`}
-                    />
-                  ))}
-                </div>
-              </>
-            )}
-          </>
-        ) : (
-          <div className="w-full h-56 bg-gray-200 flex flex-col items-center justify-center text-gray-500">
-            <ImageIcon className="w-12 h-12 mb-2" />
-            <span className="text-sm font-medium">No Image Available</span>
-          </div>
-        )}
-        
+      <div ref={imageContainerRef} className="relative bg-gray-200 h-56">
+        {renderImageContent()}
         {car.verified && (
-            <div className="absolute top-2 right-2 bg-green-500 text-white text-xs font-bold px-2 py-1 rounded-full flex items-center">
-                <svg className="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd"></path></svg>
-                Verified
-            </div>
+          <div className="absolute top-2 right-2 bg-green-500 text-white text-xs font-bold px-2 py-1 rounded-full flex items-center">
+            <svg className="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd"></path></svg>
+            Verified
+          </div>
         )}
       </div>
 
@@ -132,25 +186,27 @@ const CarCard: React.FC<CarCardProps> = ({ car, onBookNow }) => {
             <span className="text-2xl font-bold text-foreground">₹{car.pricePerDay}</span>
             <span className="text-sm text-gray-500">/day</span>
           </div>
-          <div className="flex items-center space-x-2">
-            <a 
-                href="https://wa.me/918897072640" 
-                target="_blank" 
-                rel="noopener noreferrer" 
-                onClick={(e) => e.stopPropagation()}
-                className="p-2 rounded-full bg-green-500 text-white hover:bg-green-600 transition-all duration-300 shadow-sm hover:shadow-md"
-                aria-label="Contact on WhatsApp"
-            >
-                <WhatsAppIcon className="w-5 h-5" />
-            </a>
-            <button
-              onClick={() => onBookNow(car)}
-              disabled={!car.available}
-              className="px-4 py-2 rounded-lg bg-primary text-white font-semibold hover:bg-primary-hover transition-all duration-300 shadow-sm hover:shadow-md disabled:bg-gray-400 disabled:cursor-not-allowed"
-            >
-              Book Now
-            </button>
-          </div>
+          {showBookingControls && (
+            <div className="flex items-center space-x-2">
+              <a 
+                  href="https://wa.me/918897072640" 
+                  target="_blank" 
+                  rel="noopener noreferrer" 
+                  onClick={(e) => e.stopPropagation()}
+                  className="p-2 rounded-full bg-green-500 text-white hover:bg-green-600 transition-all duration-300 shadow-sm hover:shadow-md"
+                  aria-label="Contact on WhatsApp"
+              >
+                  <WhatsAppIcon className="w-5 h-5" />
+              </a>
+              <button
+                onClick={() => onBookNow(car)}
+                disabled={!car.available}
+                className="px-4 py-2 rounded-lg bg-primary text-white font-semibold hover:bg-primary-hover transition-all duration-300 shadow-sm hover:shadow-md disabled:bg-gray-400 disabled:cursor-not-allowed"
+              >
+                Book Now
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>
